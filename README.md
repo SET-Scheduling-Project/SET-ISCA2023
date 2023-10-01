@@ -72,3 +72,14 @@ The "Scheduling Space Size Calculation" and "Optimal HW-tile Allocation Algorith
 
 - The current running method is not elegant, and we will improve it soon.
 
+## Current Plans
+
+Since current APIs of the main program mostly relies on cin, it is mostly inconvenient and difficult to start with.
+
+Thus we are planning to add better input formats, i.e. config files, and command line arguments.
+
+Also, we are planning to add comments or docs for better understanding of the modules(classes) in the codes.
+
+## Contacting Us
+
+If you have any questions, bug reports, or suggetions, feel free to contact *weiyc22@mails.tsinghua.edu.cn* or post issues under this repo. (-:
