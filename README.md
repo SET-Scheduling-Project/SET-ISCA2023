@@ -82,4 +82,4 @@ Also, we are planning to add comments or docs for better understanding of the mo
 
 ## Contacting Us
 
-If you have any questions, bug reports, or suggetions, feel free to contact *weiyc22@mails.tsinghua.edu.cn* or post issues under this repo. (-:
+If you have any questions, bug reports, or suggetions, feel free to contact the authors at *1148821791@qq.com* and *weiyc22@mails.tsinghua.edu.cn*, or post issues under this repo. (-:
