@@ -4,7 +4,6 @@
 #include <vector>
 #include <unordered_map>
 
-#include "cluster.h"
 #include "util.h"
 
 class DataLayout;
@@ -19,7 +18,7 @@ class BufferUsage;
 
 class NoC{
 public:
-	typedef Cluster::hop_t hop_t;
+	typedef vol_t hop_t;
 	static energy_t hop_cost, DRAM_acc_cost;
 	static bw_t DRAM_bw, NoC_bw;
 	static std::vector<pos_t> dram_list;

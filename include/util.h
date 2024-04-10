@@ -43,9 +43,6 @@ DEF_MAX(cost);
 
 typedef std::int16_t cidx_t;
 
-typedef std::uint8_t memidx_t;
-#define IO_UINT8_
-
 typedef std::int8_t mlen_t;
 #define IO_INT8_
 
@@ -54,6 +51,7 @@ typedef double utime_t;
 
 // The bitwidth of data (in bits).
 typedef std::uint8_t bwidth_t;
+#define IO_UINT8_
 
 #undef DEF_MAX_
 #undef DEF_MAX
