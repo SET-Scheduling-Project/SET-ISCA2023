@@ -65,8 +65,6 @@ public:
 	~LTreeNode();
 
 	friend class SAEngine;
-	friend void halv_bat(LTreeNode* node);
-	friend void flat_bat(LTreeNode* node, len_t n_batch);
 	LTreeNode* copy() const;
 };
 
