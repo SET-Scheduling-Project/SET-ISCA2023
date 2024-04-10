@@ -2,7 +2,6 @@
 #define NNS_H
 
 #include "network.h"
-#include "util.h"
 
 extern const Network darknet19;
 

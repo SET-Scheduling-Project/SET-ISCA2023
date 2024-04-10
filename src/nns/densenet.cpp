@@ -1,8 +1,9 @@
 #include "nns/nns.h"
+
 #include <string>
 
-static int add_dblock(Network& network, int incp_id, int& sfmap, int num_layers, int nfmaps_in, Network::layer_set& prevs, int k=32, int bn_size = 4)
-{
+
+static int add_dblock(Network& network, int incp_id, int& sfmap, int num_layers, int nfmaps_in, Network::layer_set& prevs, int k=32, int bn_size = 4){
     std::string pfx = std::string("block_") + std::to_string(incp_id) + "_";
     int fmap_bn = bn_size * k;
 
@@ -18,8 +19,7 @@ static int add_dblock(Network& network, int incp_id, int& sfmap, int num_layers,
     return fmap_in;
 }
 
-static Network::lid_t add_trans(Network& network, int trans_id, int& fmap_in, int& sfmap, Network::layer_set prevs)
-{
+static Network::lid_t add_trans(Network& network, int trans_id, int& fmap_in, int& sfmap, Network::layer_set prevs){
     std::string pfx = std::string("trans_") + std::to_string(trans_id) + "_";
     network.add(NLAYER((pfx + "1x1").c_str(), Conv, C=fmap_in, K=fmap_in/2, H=sfmap, R=1), prevs);
     auto ret = network.add(NLAYER((pfx + "pool").c_str(), Pooling, K=fmap_in/2, H=sfmap/2, R=2));
@@ -27,6 +27,7 @@ static Network::lid_t add_trans(Network& network, int trans_id, int& fmap_in, in
     sfmap/=2;
     return ret;
 }
+
 
 const Network densenet = []{
 	Network n;
@@ -40,12 +41,10 @@ const Network densenet = []{
     int fmap_in = init_f;
 	Network::layer_set prevs = {pool0};
 
-    for(int i=0;i<4;++i)
-    {
+	for(int i=0; i<4; ++i){
         int nlayers=layer_num_list[i];
         fmap_in = add_dblock(n, i+1, sfmap, nlayers, fmap_in, prevs);
-        if(i!=3)
-        {
+		if(i!=3){
             prevs = {add_trans(n, i+1, fmap_in, sfmap, prevs)};
         }
     }

@@ -1,8 +1,10 @@
 #include "nns/nns.h"
+
 #include <cstdarg>
 #include <cstdio>
-#include <string>
 #include <exception>
+#include <string>
+
 
 static std::string fmt(const char* format, ...) {
 	va_list args;
