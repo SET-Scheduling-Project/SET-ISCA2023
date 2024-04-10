@@ -32,6 +32,23 @@ cidx_t Cluster::num_cores() const{
 	return range.last - range.first;
 }
 
+pos_t Cluster::operator[](cidx_t num_chip) const{
+	if(num_chip >= num_cores()){
+		std::string msg = "Cluster::operator[] : num_chip >= num_cores() (";
+		msg += std::to_string(num_chip);
+		msg += " >= ";
+		msg += std::to_string(num_cores());
+		msg += ")";
+		throw std::out_of_range(msg);
+	}
+	/*
+	if(!use_range){
+		return core_list[static_cast<size_t>(num_chip)];
+	}
+	*/
+	return get_pos(range.first + num_chip);
+}
+
 Cluster::allocRes_t Cluster::try_alloc(utime_t* ops, cidx_t childNum, utime_t totOps) const{
 	if(childNum <= 0){
 		throw std::invalid_argument("Cluster::try_alloc : childNum must be positive.");
@@ -115,23 +132,6 @@ Cluster Cluster::sub_cluster(cidx_t from, cidx_t num) const{
 	from += range.first;
 	assert(from + num <= range.last);
 	return Cluster(from, from+num);
-}
-
-pos_t Cluster::operator[](cidx_t num_chip) const{
-	if(num_chip >= num_cores()){
-		std::string msg = "Cluster::operator[] : num_chip >= num_cores() (";
-		msg += std::to_string(num_chip);
-		msg += " >= ";
-		msg += std::to_string(num_cores());
-		msg += ")";
-		throw std::out_of_range(msg);
-	}
-	/*
-	if(!use_range){
-		return core_list[static_cast<size_t>(num_chip)];
-	}
-	*/
-	return get_pos(range.first + num_chip);
 }
 
 pos_t Cluster::get_pos(cidx_t core_idx){
