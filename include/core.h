@@ -1,3 +1,11 @@
+/* This file contains
+ *	Core:        base class for all cores
+ *  EyerissCore: the core with Eyeriss architecture.
+ *  PolarCore:   the core in our test chip.
+ *
+ *  One can add their own cores as classes here.
+ */
+
 #ifndef CORE_H
 #define CORE_H
 
@@ -6,19 +14,29 @@
 
 class Core{
 public:
+	/* Buffer specifications
+	 *
+	 * Size:    buffer volume.
+	 * R/WCost: I/O energy cost.
+	 * R/WBW:   I/O bandwidth.
+	 */
 	struct Buffer{
 		vol_t Size;
 		energy_t RCost, WCost;
 		bw_t RBW, WBW;
 		Buffer(vol_t _size = 0, energy_t _rCost = 0, bw_t _rBW = 256, energy_t _wCost = 0, bw_t _wBW = 0);
 	};
+	// Type of MAC unit nums.
 	typedef std::uint16_t numMac_t;
 
+	// Number of MAC units and LR MAC units (vector units for element-wise ops).
 	const numMac_t mac_num, LR_mac_num;
+	// Cost of LR MAC units.
 	const energy_t LR_mac_cost;
 
 	Core(numMac_t _mac_num, numMac_t _LR_mac_num, energy_t _LR_mac_cost);
 
+	// Global buffer (largest buffer of each core) information.
 	virtual const Buffer& ubuf() const = 0;
 };
 
@@ -57,6 +75,7 @@ public:
 class EyerissCore : public Core {
 public:
 	typedef std::uint8_t vmac_t;
+	// Eyeriss has a 2D PE array
 	struct PESetting {
 		vmac_t Xarray, Yarray;
 		energy_t MacCost;
