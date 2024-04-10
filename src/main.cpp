@@ -35,56 +35,56 @@ int main(int argc, char** argv){
 	Core::numMac_t LR_mac_num = 64;
 	energy_t LR_mac_cost=0.0873; //IEEE FP16
 
-	PolarCore::Buffer al1,wl1,ol1,al2,wl2,ol2,ul3;
-	PolarCore::PESetting s(8,8,0.018);
-	PolarCore::Bus bus(4,4,0.018,16);
-	al1.Size = 8 KB; //2 64bit-IO 4KB 1-port SBRAM
-	ol1.Size = 2 KB; //2 16bit-IO 1KB 2-port REGF
-	wl1.Size = 4 KB; //2 64bit-IO 2KB 1-port SBRAM
-	ol2.Size = 28 KB; // 2 128bit-IO 14KB 1-port MMBSRAM (concat)
-	wl2.Size = 0;//256 KB;
-	ul3.Size = 1024 KB; //16 64-bit IO 64KB 1-port MBSRAM
-	al2.Size = 0;
+	PolarCore::Buffers pBuf;
+	PolarCore::PESetting pPE(8,8,0.018);
+	PolarCore::Bus pBus(4,4,0.018,16);
+	pBuf.al1.Size = 8 KB; //2 64bit-IO 4KB 1-port SBRAM
+	pBuf.ol1.Size = 2 KB; //2 16bit-IO 1KB 2-port REGF
+	pBuf.wl1.Size = 4 KB; //2 64bit-IO 2KB 1-port SBRAM
+	pBuf.ol2.Size = 28 KB; // 2 128bit-IO 14KB 1-port MMBSRAM (concat)
+	pBuf.wl2.Size = 0;//256 KB;
+	pBuf.ul3.Size = 1024 KB; //16 64-bit IO 64KB 1-port MBSRAM
+	pBuf.al2.Size = 0;
 
-	al1.RCost = 0.0485625 * 8;
-	al1.WCost = 0.0411625 * 8;
-	wl1.RCost = 0.0381625 * 8; // emlpoy 2 4KB
-	wl1.WCost = 0.0308875 * 8;
+	pBuf.al1.RCost = 0.0485625 * 8;
+	pBuf.al1.WCost = 0.0411625 * 8;
+	pBuf.wl1.RCost = 0.0381625 * 8; // emlpoy 2 4KB
+	pBuf.wl1.WCost = 0.0308875 * 8;
 
-	ol1.RCost = 0.0802 * 8;
-	ol1.WCost =	0.0709 * 8;
-	ol2.RCost = 0.07648125 * 8;
-	ol2.WCost = 0.0989875 * 8;
-	ul3.RCost = 0.1317125 * 8;
-	ul3.WCost = 0.234025 * 8;
+	pBuf.ol1.RCost = 0.0802 * 8;
+	pBuf.ol1.WCost = 0.0709 * 8;
+	pBuf.ol2.RCost = 0.07648125 * 8;
+	pBuf.ol2.WCost = 0.0989875 * 8;
+	pBuf.ul3.RCost = 0.1317125 * 8;
+	pBuf.ul3.WCost = 0.234025 * 8;
 
-	al2.RCost = al2.WCost = 0;
-	wl2.RCost = wl2.WCost = 0;
+	pBuf.al2.RCost = pBuf.al2.WCost = 0;
+	pBuf.wl2.RCost = pBuf.wl2.WCost = 0;
 
-	PolarCore core(s,bus,al1,wl1,ol1,al2,wl2,ol2,ul3,LR_mac_num,LR_mac_cost);
+	PolarCore core(pPE, LR_mac_num, LR_mac_cost, pBus, pBuf);
 	PolarMapper mapper(core);
 
-	EyerissCore::Buffer _al1, _wl1, pl1, ul2;
 	EyerissCore::PESetting s2(32, 32, 0.018);
 	EyerissCore::Bus ibus(0.018, 64);
 	EyerissCore::Bus wbus(0.018, 64);
 	EyerissCore::Bus pbus(0.018, 64); // ifmap RC, weight RCK, psum RK
+	EyerissCore::Buses eBus{ibus, wbus, pbus};
+	EyerissCore::Buffers eBuf;
 
-	_al1.Size = 32;
-	pl1.Size = 1;
-	_wl1.Size = 128;
-	ul2.Size = 1024 KB;
+	eBuf.al1.Size = 32;
+	eBuf.pl1.Size = 1;
+	eBuf.wl1.Size = 128;
+	eBuf.ul2.Size = 1024 KB;
 
-	_al1.RCost = 0.0509 * 8; //8bit IO single port
-	_al1.WCost = 0.0506 * 8;//0.045;
-	_wl1.RCost = 0.0545 * 8; //Using 2 banks of 64
-	_wl1.WCost = 0.054 * 8;//0.090;
-	pl1.RCost = pl1.WCost = 0.0;
-	ul2.RCost = 0.1317125 * 8;
-	ul2.WCost = 0.234025 * 8;
+	eBuf.al1.RCost = 0.0509 * 8; //8bit IO single port
+	eBuf.al1.WCost = 0.0506 * 8;//0.045;
+	eBuf.wl1.RCost = 0.0545 * 8; //Using 2 banks of 64
+	eBuf.wl1.WCost = 0.054 * 8;//0.090;
+	eBuf.pl1.RCost = eBuf.pl1.WCost = 0.0;
+	eBuf.ul2.RCost = 0.1317125 * 8;
+	eBuf.ul2.WCost = 0.234025 * 8;
 
-
-	EyerissCore core2(s2, ibus, wbus, pbus, _al1, _wl1, pl1, ul2, LR_mac_num, LR_mac_cost);
+	EyerissCore core2(s2, LR_mac_num, LR_mac_cost, eBus, eBuf);
 	EyerissMapper mapper2(core2);
 	int mm, nn, xx, yy, ss, bb, rr, ff;
 	bw_t bw;
