@@ -1,51 +1,41 @@
 #include "bufferusage.h"
 
-#include <cassert>
+#include <stdexcept>
 #include "layerengine.h"
 #include "schnode.h"
 
 BufferUsage::BufferUsage()
 	:BufferUsage(SchNode::layerMapper->get_ubuf_size()){}
 
-BufferUsage::BufferUsage(vol_t _max_vol)
-	:factor(1),max_vol(_max_vol),valid(true){}
+BufferUsage::BufferUsage(vol_t _max_vol): capacity(_max_vol), valid(true){}
 
 bool BufferUsage::add(pos_t chip, vol_t size){
-	if(factor == 1){
-		valid &= (usage[chip] += size) <= max_vol;
-	}else if(size % factor == 0){
-		valid &= (usage[chip] += size / factor)*factor <= max_vol;
-	}else{
-		for(auto x:usage){
-			usage[x.first] *= factor;
-		}
-		factor = 1;
-		valid &= (usage[chip] += size) <= max_vol;
-	}
+	valid = valid && ((usage[chip] += size) <= capacity);
 	return valid;
 }
 
 bool BufferUsage::all_add(vol_t size){
-	for(auto x:usage){
-		valid &= (usage[x.first] += size) <= max_vol;
+	for(auto& x : usage){
+		valid = valid && ((x.second += size) <= capacity);
 	}
 	return valid;
 }
 
 BufferUsage& BufferUsage::operator+=(const BufferUsage& other){
-	assert(&other != this);
+	if(&other == this){
+		throw std::invalid_argument(
+			"BufferUsage: \"a += a\" not supported. Use a.multiple(2) instead.");
+	}
+	if(other.capacity != capacity){
+		throw std::invalid_argument(
+			"BufferUsage: only usages with same capacity can be added.");
+	}
 	if(!valid || !other.valid){
 		valid = false;
 		return *this;
 	}
-	if(factor != 1){
-		for(auto x:usage){
-			usage[x.first] *= factor;
-		}
-		factor = 1;
-	}
-	for(auto x:other.usage){
-		valid &= (usage[x.first] += x.second * other.factor) <= max_vol;
+	for(const auto& x : other.usage){
+		(void) add(x.first, x.second);
 	}
 	return *this;
 }
@@ -56,25 +46,25 @@ BufferUsage BufferUsage::operator+(const BufferUsage& other) const{
 	return u;
 }
 
-void BufferUsage::max(const BufferUsage& other){
-	if(!other.valid || !valid){
+void BufferUsage::max_with(const BufferUsage& other){
+	if(other.capacity != capacity){
+		throw std::invalid_argument(
+			"BufferUsage: only usages with same capacity can take max.");
+	}
+	if(!valid || !other.valid){
 		valid = false;
 		return;
 	}
-	if(factor == 1){
-		for(auto x:other.usage){
-			usage[x.first] = MAX(usage[x.first], x.second);
-		}
-	}else{
-		// TODO:impl here.
-		assert(false);
+	for(const auto& x : other.usage){
+		vol_t& chip_usage = usage[x.first];
+		chip_usage = MAX(chip_usage, x.second);
 	}
 }
 
 vol_t BufferUsage::max() const{
 	if(!valid) return 0;
 	vol_t max_vol = 0;
-	for(auto x:usage){
+	for(const auto& x : usage){
 		max_vol = MAX(max_vol, x.second);
 	}
 	return max_vol;
@@ -84,25 +74,25 @@ double BufferUsage::avg() const{
 	if(!valid) return 0;
 	if(usage.empty()) return 0;
 	double avg_vol = 0;
-	for(auto x:usage){
+	for(const auto& x : usage){
 		avg_vol += x.second;
 	}
 	return avg_vol / usage.size();
 }
 
 bool BufferUsage::multiple(vol_t n){
-	for(auto x:usage){
-		valid &= (usage[x.first] *= n) <= max_vol;
+	for(auto& x : usage){
+		valid = valid && ((x.second *= n) <= capacity);
 	}
 	return valid;
 }
 
-vol_t BufferUsage::get_max_vol() const{
-	return max_vol;
+vol_t BufferUsage::get_capacity() const{
+	return capacity;
 }
 
 std::ostream& operator<<(std::ostream& os, const BufferUsage& usage){
-	return os<<"Buffer(max="<<usage.max()<<", avg="<<usage.avg()<<")";
+	return os << "Buffer(max=" << usage.max() << ", avg=" << usage.avg() << ")";
 }
 
 BufferUsage::operator bool() const{

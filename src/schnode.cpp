@@ -456,9 +456,9 @@ void TCut::construct(LTreeNode* node){
 				//buf_usage = p->get_buf_usage();
 			}else{
 				if(wgt_shift){
-					buf_usage.max(p->get_ifm_usage() + last_p->get_buf_usage() + last_p->get_wgt_usage() + p->get_wgt_usage());
+					buf_usage.max_with(p->get_ifm_usage() + last_p->get_buf_usage() + last_p->get_wgt_usage() + p->get_wgt_usage());
 				}else{
-					buf_usage.max(p->get_ifm_usage() + last_p->get_buf_usage());
+					buf_usage.max_with(p->get_ifm_usage() + last_p->get_buf_usage());
 				}
 				if(!buf_usage){
 					valid = false;
@@ -483,9 +483,9 @@ void TCut::construct(LTreeNode* node){
 	if(!is_top){
 		if(num_bgrp == 1){
 			if(wgt_shift){
-				buf_usage.max(last_p->get_buf_usage() + last_p->get_wgt_usage());
+				buf_usage.max_with(last_p->get_buf_usage() + last_p->get_wgt_usage());
 			}else{
-				buf_usage.max(last_p->get_buf_usage());
+				buf_usage.max_with(last_p->get_buf_usage());
 			}
 		}else{
 			if(!(is_seg || ifm_usage.multiple(num_bgrp))){
@@ -493,9 +493,9 @@ void TCut::construct(LTreeNode* node){
 				return;
 			}
 			if(wgt_shift){
-				buf_usage.max(children.front()->get_ifm_usage() + children.front()->get_wgt_usage() + last_p->get_buf_usage() + last_p->get_wgt_usage());
+				buf_usage.max_with(children.front()->get_ifm_usage() + children.front()->get_wgt_usage() + last_p->get_buf_usage() + last_p->get_wgt_usage());
 			}else{
-				buf_usage.max(children.front()->get_ifm_usage() + last_p->get_buf_usage());
+				buf_usage.max_with(children.front()->get_ifm_usage() + last_p->get_buf_usage());
 			}
 		}
 		if(!buf_usage){
