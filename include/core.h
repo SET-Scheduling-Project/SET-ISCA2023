@@ -39,16 +39,15 @@ public:
 		Bus(numpe_t _aLen, numpe_t _oLen, energy_t _hopCost, bw_t _busBW);
 	};
 
-	struct Buffers{
-		Buffer al1, wl1, ol1, al2, wl2, ol2, ul3;
-	};
-
 	const PESetting pes;
 	const Bus bus;
 	// Notice: there are 8 wl1 in each Polar Core.
 	const Buffer al1, wl1, ol1, al2, wl2, ol2, ul3;
 
 public:
+	struct Buffers{
+		Buffer al1, wl1, ol1, al2, wl2, ol2, ul3;
+	};
 	PolarCore(const PESetting& _pes, numMac_t _LR_mac_num, energy_t _LR_mac_cost,
 			  const Bus& _noc, const Buffers& _bufs);
 
@@ -70,19 +69,17 @@ public:
 		Bus(energy_t _BusCost, bw_t _BusBW);
 	};
 
-	struct Buses{
-		Bus ibus, wbus, pbus;
-	};
-
-	struct Buffers{
-		Buffer al1, wl1, pl1, ul2;
-	};
-
 	const PESetting pes;
 	const Bus ibus, wbus, pbus;
 	const Buffer al1, wl1, pl1, ul2;
 
 public:
+	struct Buses{
+		Bus ibus, wbus, pbus;
+	};
+	struct Buffers{
+		Buffer al1, wl1, pl1, ul2;
+	};
 	EyerissCore(const PESetting& _pes, numMac_t _LR_mac_num, energy_t _LR_mac_cost,
 				const Buses& _buses, const Buffers& _bufs);
 
