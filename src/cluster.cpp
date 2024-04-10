@@ -134,57 +134,6 @@ pos_t Cluster::operator[](cidx_t num_chip) const{
 	return get_pos(range.first + num_chip);
 }
 
-/*
-memidx_t Cluster::nearest_dram() const{
-	// TODO:
-	assert(false);
-	return -1;
-}
-*/
-
-/*
-Cluster::hop_t Cluster::unicast(pos_t src, pos_t dst){
-	return static_cast<hop_t>(abs(src.x-dst.x)+abs(src.y-dst.y));
-}
-
-static inline Cluster::hop_t calc_intd(mlen_t s, mlen_t c, mlen_t b){
-	return static_cast<Cluster::hop_t>(MAX(c,b) - MIN(s,c));
-}
-
-// TODO: better realization.
-Cluster::hop_t Cluster::multicast(pos_t src, pos_t* dst, cidx_t len){
-	mlen_t cur_x = dst[0].x;
-	mlen_t min_y = dst[0].y;
-	hop_t h = calc_intd(dst[0].x, src.x, dst[len-1].x);
-	for(cidx_t i=1; i<len; ++i){
-		if(dst[i].x != cur_x){
-			cur_x = dst[i].x;
-			h+=calc_intd(min_y, src.y, dst[i-1].y);
-			min_y = dst[i].y;
-		}
-	}
-	h+=calc_intd(min_y, src.y, dst[len-1].y);
-	return h;
-}
-
-Cluster::hop_t Cluster::unicast_dram(pos_t dst, vol_t size){
-	return (static_cast<hop_t>((xlen+1)*ylen+(ylen-1)*(ylen-2*dst.y)+2*dst.y*dst.y)*size)/static_cast<hop_t>(2*ylen);
-}
-
-Cluster::hop_t Cluster::unicast_to_dram(pos_t dst, vol_t size){
-	return unicast_dram(dst, size);
-}
-
-// TODO: better multicast.
-// TODO: multicast can also do unicast.
-Cluster::hop_t Cluster::multicast_dram(pos_t* dst, cidx_t len, vol_t size){
-	hop_t tot_hop=0;
-	for(cidx_t i=0; i<len; ++i){
-		tot_hop += unicast_dram(dst[i], size);
-	}
-	return tot_hop;
-}
-*/
 pos_t Cluster::get_pos(cidx_t core_idx){
 	if(core_idx < 0 || core_idx >= xlen * ylen){
 		std::string msg = "Cluster::get_pos : core_idx (";
