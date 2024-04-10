@@ -9,16 +9,14 @@ BufferUsage::BufferUsage()
 
 BufferUsage::BufferUsage(vol_t _max_vol): capacity(_max_vol), valid(true){}
 
-bool BufferUsage::add(pos_t chip, vol_t size){
-	valid = valid && ((usage[chip] += size) <= capacity);
+BufferUsage::operator bool() const{
 	return valid;
 }
 
-bool BufferUsage::all_add(vol_t size){
-	for(auto& x : usage){
-		valid = valid && ((x.second += size) <= capacity);
-	}
-	return valid;
+BufferUsage BufferUsage::operator+(const BufferUsage& other) const{
+	BufferUsage u = other;
+	u += *this;
+	return u;
 }
 
 BufferUsage& BufferUsage::operator+=(const BufferUsage& other){
@@ -40,12 +38,6 @@ BufferUsage& BufferUsage::operator+=(const BufferUsage& other){
 	return *this;
 }
 
-BufferUsage BufferUsage::operator+(const BufferUsage& other) const{
-	BufferUsage u = other;
-	u += *this;
-	return u;
-}
-
 void BufferUsage::max_with(const BufferUsage& other){
 	if(other.capacity != capacity){
 		throw std::invalid_argument(
@@ -59,6 +51,25 @@ void BufferUsage::max_with(const BufferUsage& other){
 		vol_t& chip_usage = usage[x.first];
 		chip_usage = MAX(chip_usage, x.second);
 	}
+}
+
+bool BufferUsage::add(pos_t chip, vol_t size){
+	valid = valid && ((usage[chip] += size) <= capacity);
+	return valid;
+}
+
+bool BufferUsage::all_add(vol_t size){
+	for(auto& x : usage){
+		valid = valid && ((x.second += size) <= capacity);
+	}
+	return valid;
+}
+
+bool BufferUsage::multiple(vol_t n){
+	for(auto& x : usage){
+		valid = valid && ((x.second *= n) <= capacity);
+	}
+	return valid;
 }
 
 vol_t BufferUsage::max() const{
@@ -80,21 +91,10 @@ double BufferUsage::avg() const{
 	return avg_vol / usage.size();
 }
 
-bool BufferUsage::multiple(vol_t n){
-	for(auto& x : usage){
-		valid = valid && ((x.second *= n) <= capacity);
-	}
-	return valid;
-}
-
 vol_t BufferUsage::get_capacity() const{
 	return capacity;
 }
 
 std::ostream& operator<<(std::ostream& os, const BufferUsage& usage){
 	return os << "Buffer(max=" << usage.max() << ", avg=" << usage.avg() << ")";
-}
-
-BufferUsage::operator bool() const{
-	return valid;
 }

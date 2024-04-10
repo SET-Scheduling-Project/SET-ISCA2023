@@ -19,15 +19,15 @@ private:
 public:
 	BufferUsage();
 	BufferUsage(vol_t _max_vol);
+	operator bool() const;
+	BufferUsage operator+(const BufferUsage& other) const;
+	BufferUsage& operator+=(const BufferUsage& other);
+	void max_with(const BufferUsage& other);
 	bool add(pos_t chip, vol_t size);
 	bool all_add(vol_t size);
-	operator bool() const;
-	BufferUsage& operator+=(const BufferUsage& other);
-	BufferUsage operator+(const BufferUsage& other) const;
-	void max_with(const BufferUsage& other);
+	bool multiple(vol_t n);
 	vol_t max() const;
 	double avg() const;
-	bool multiple(vol_t n);
 	vol_t get_capacity() const;
 
 	friend std::ostream& operator<<(std::ostream& os, const BufferUsage& usage);
