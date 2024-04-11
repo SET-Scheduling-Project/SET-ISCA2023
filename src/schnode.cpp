@@ -225,6 +225,12 @@ void LNode::print_struct(std::string pad, std::ostream& os) const{
 	os << std::endl;
 }
 
+void LNode::print_tree(std::string pad, std::ostream& os) const{
+	os << pad << layert.name() << ' ' << num_batch;
+	// os << ' ' << place_sch;
+	os << std::endl;
+}
+
 Cut::Cut(SchNode::NodeType t, LTreeNode* node, const Cluster& _c, SchNode::cut_ptr _parent)
 	:SchNode(t, _c, _parent, node->get_tot_batch()), curNode(nullptr),
 	  layers(node->layers()), num_bgrp(node->get_bgrp_num()){
@@ -324,6 +330,17 @@ void Cut::print_struct(std::string pad, std::ostream& os) const{
 	pad += '\t';
 	for(auto child: children){
 		child->print_struct(pad, os);
+	}
+}
+
+void Cut::print_tree(std::string pad, std::ostream& os) const{
+	os << pad << ((type == NodeType::S)?'S':'T');
+	os << ' ' << num_batch << '/' << num_bgrp;
+	// os << ' ' << cost;
+	os << std::endl;
+	pad += '\t';
+	for(auto child: children){
+		child->print_tree(pad, os);
 	}
 }
 

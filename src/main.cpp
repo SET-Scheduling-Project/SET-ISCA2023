@@ -250,6 +250,8 @@ int main(int argc, char** argv){
 		std::cout << "LS: " << LS_res << std::endl;
 		std::cout << "Struct:" << std::endl;
 		LS_res->print_struct("\t");
+		std::ofstream out("tree_LS.txt");
+		LS_res->print_tree("", out);
 	}else{
 		std::cout << "LS finds no valid solution." << std::endl;
 		return 0;
@@ -289,6 +291,8 @@ int main(int argc, char** argv){
 			std::cout << method << "-SA: " << cur_sch.sch << std::endl;
 			std::cout << "Struct:" << std::endl;
 			cur_sch.sch->print_struct("\t");
+			std::ofstream out(std::string("tree_") + method + "-SA.txt");
+			cur_sch.sch->print_tree("", out);
 			if(!IR_name.empty()){
 				auto IR = cur_sch.sch->IR_gen();
 				Json::StyledWriter swriter;
@@ -338,6 +342,8 @@ int main(int argc, char** argv){
 			std::cout << method << ": " << SA_sch.sch << std::endl;
 			std::cout << "Struct: " << std::endl;
 			SA_sch.sch->print_struct("\t");
+			std::ofstream out(std::string("tree_") + method + ".txt");
+			SA_sch.sch->print_tree("", out);
 			if(!IR_name.empty()){
 				auto IR = SA_sch.sch->IR_gen();
 				Json::StyledWriter swriter;

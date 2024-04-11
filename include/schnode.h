@@ -113,6 +113,7 @@ public:
 
 	// Print functions.
 	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const =0;
+	virtual void print_tree(std::string pad = "", std::ostream& os = std::cout) const =0;
 	void print_res(std::ostream& os = std::cout) const;
 	friend std::ostream& operator<<(std::ostream& os, const SchNode& sch);
 	friend std::ostream& operator<<(std::ostream& os, const SchNode* sch);
@@ -171,6 +172,7 @@ public:
 	bool get_to_dram() const;
 
 	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const override;
+	virtual void print_tree(std::string pad = "", std::ostream& os = std::cout) const override;
 
 	// **************** Code for IR generation ****************
 	static const Cut* get_lca(const LNode* node1, const LNode* node2);
@@ -209,6 +211,7 @@ public:
 	len_t get_num_bgrp() const;
 
 	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const override;
+	virtual void print_tree(std::string pad = "", std::ostream& os = std::cout) const override;
 
 	// **************** Code for IR generation ****************
 	virtual const LNode* get_lnode_by_id(lid_t id) const override;
