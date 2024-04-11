@@ -10,48 +10,75 @@ typedef Network::lid_t lid_t;
 
 class SAEngine;
 
+
 class LTreeNode{
+	friend class SAEngine;
 public:
 	enum class NodeType : std::uint8_t{
-		S,T,L
+		S, // SCut
+		T, // TCut
+		L  // LNode
 	};
 	typedef std::vector<LTreeNode*> node_vec;
+
 private:
+	// Type of node.
 	NodeType t;
+
+	// "new" and "modified" tags in incremental search.
 	bool isNewNode, modified;
+
+	// Tree properties.
+	len_t height;
 	LTreeNode* parent;
 	node_vec children;
+
+	// Node properties.
 	Bitset layer_set;
 	utime_t unit_time;
 	len_t num_bgrp, num_batch;
-	// Only for S Cut.
+
+	// Only for SCut.
 	std::vector<lid_t> stage;
 	// TODO: actually this is max_stage.
 	lid_t num_stage;
-	// Only for Layer.
+
+	// Only for LNode.
 	bool to_dram;
 	// Direct prevs.
 	Bitset dirp_set;
 
-	len_t height;
-
-
 	// Also sets to_dram.
 	static bool is_shortcut(lid_t from_id, const LTreeNode& to);
+
+	// Used in init_root().
 	void traverse();
 	void traverse_lset(bool calc_type = false);
+
 public:
 	LTreeNode(const Bitset& _layer_set, len_t _num_batch, LTreeNode* _parent=nullptr, NodeType _t=NodeType::L);
 	LTreeNode(lid_t _layer, len_t _num_batch, LTreeNode* _parent=nullptr);
 	LTreeNode(const LTreeNode& node)=default;
-	void add(LTreeNode* child);
-	const node_vec& get_children();
-	NodeType get_type();
-	const Bitset& layers();
+	~LTreeNode();
+
+	// Initialize the whole tree from the root.
 	void init_root();
+
+	void add(LTreeNode* child);
+
+	// Used in incremental search.
 	void confirm();
 	bool isModified() const;
 	bool isNew() const;
+
+	LTreeNode* copy() const;
+
+	void reset_lset();
+
+	// Getter functions.
+	NodeType get_type();
+	const node_vec& get_children();
+	const Bitset& layers();
 	utime_t get_utime() const;
 	len_t get_bgrp_num() const;
 	len_t get_bgrp_size() const;
@@ -61,13 +88,6 @@ public:
 	lid_t get_num_stage() const;
 	bool get_to_dram() const;
 	const Bitset& get_dirp_set() const;
-	void reset_lset();
-	~LTreeNode();
-
-	friend class SAEngine;
-	friend void halv_bat(LTreeNode* node);
-	friend void flat_bat(LTreeNode* node, len_t n_batch);
-	LTreeNode* copy() const;
 };
 
 #endif // LTREENODE_H

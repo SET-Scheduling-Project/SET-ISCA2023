@@ -175,7 +175,7 @@ Network::lid_t Network::add(const Layer* l, const layer_set& ifmPrevs, bwidth_t 
 		throw std::overflow_error("Too many layers! Consider using a larger format for lid_t (perhaps uint32_t?)");
 	}
 
-	if(layers.size() >= prev_layers.max_size()){
+	if(layers.size() >= prev_layers.size()){
 		throw std::overflow_error("Too many layers! Consider using a larger Bitset (perhaps 4096?)");
 	}
 

@@ -36,6 +36,7 @@ HEADERS += \
     include/noc.h \
     include/partition.h \
     include/placement.h \
+    include/sa.h \
     include/schnode.h \
     include/util.h
 
@@ -68,6 +69,7 @@ SOURCES += \
     src/noc.cpp \
     src/partition.cpp \
     src/placement.cpp \
+    src/sa.cpp \
     src/schnode.cpp \
     src/util.cpp
 

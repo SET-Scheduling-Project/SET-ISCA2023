@@ -1,5 +1,6 @@
 #include "nns/nns.h"
 
+
 static Network::layer_set add_inception(
 		Network& n, std::string incp_id,
 		len_t sfmap, len_t nfmaps_in, len_t nfmaps_1, len_t nfmaps_3r,
