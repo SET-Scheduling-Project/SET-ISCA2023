@@ -13,26 +13,22 @@ LTreeNode::LTreeNode(lid_t _layer, len_t _num_batch, LTreeNode *_parent)
 	if(_parent) _parent->add(this);
 }
 
-void LTreeNode::add(LTreeNode* child){
-	children.push_back(child);
-	// Add to list if needed.
-}
-
-const LTreeNode::node_vec& LTreeNode::get_children(){
-	return children;
-}
-
-LTreeNode::NodeType LTreeNode::get_type(){
-	return t;
-}
-
-const Bitset& LTreeNode::layers(){
-	return layer_set;
+LTreeNode::~LTreeNode(){
+	for(auto child: children){
+		if(child == this){
+			assert(false);
+		}
+		delete child;
+	}
 }
 
 void LTreeNode::init_root(){
 	traverse_lset();
 	traverse();
+}
+
+void LTreeNode::add(LTreeNode* child){
+	children.push_back(child);
 }
 
 void LTreeNode::confirm(){
@@ -49,6 +45,34 @@ bool LTreeNode::isModified() const{
 
 bool LTreeNode::isNew() const{
 	return isNewNode;
+}
+
+LTreeNode* LTreeNode::copy() const{
+	LTreeNode * l = new LTreeNode(*this);
+	l->children.clear();
+	LTreeNode* c;
+	for(auto child:children){
+		c = child->copy();
+		c->parent = l;
+		l->children.push_back(c);
+	}
+	return l;
+}
+
+void LTreeNode::reset_lset(){
+	layer_set.clear();
+}
+
+LTreeNode::NodeType LTreeNode::get_type(){
+	return t;
+}
+
+const LTreeNode::node_vec& LTreeNode::get_children(){
+	return children;
+}
+
+const Bitset& LTreeNode::layers(){
+	return layer_set;
 }
 
 utime_t LTreeNode::get_utime() const{
@@ -81,31 +105,6 @@ bool LTreeNode::get_to_dram() const{
 
 const Bitset& LTreeNode::get_dirp_set() const{
 	return dirp_set;
-}
-
-void LTreeNode::reset_lset(){
-	layer_set.clear();
-}
-
-LTreeNode::~LTreeNode(){
-	for(auto child: children){
-		if(child == this){
-			assert(false);
-		}
-		delete child;
-	}
-}
-
-LTreeNode* LTreeNode::copy() const{
-	LTreeNode * l = new LTreeNode(*this);
-	l->children.clear();
-	LTreeNode* c;
-	for(auto child:children){
-		c = child->copy();
-		c->parent = l;
-		l->children.push_back(c);
-	}
-	return l;
 }
 
 bool LTreeNode::is_shortcut(lid_t from_id, const LTreeNode& to){
@@ -251,4 +250,3 @@ void LTreeNode::traverse_lset(bool calc_type){
 		modified |= child->modified;
 	}
 }
-

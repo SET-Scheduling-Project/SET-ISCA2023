@@ -538,7 +538,7 @@ void SAEngine::SA_search(WholeSch& w_sch, const Cluster& c, lid_t max_depth, int
 		LTreeNode* new_tree = sa_change(cur_node, valid_op, max_depth, sa_type, &op_type);
 		SchNode* new_res;
 		if(new_tree->isNew()){
-			new_res = Cut::newNode(new_tree, c, nullptr);
+			new_res = SchNode::newNode(new_tree, c, nullptr);
 		}else{
 			new_res = cur_res->copy();
 			assert(new_tree->isModified());
@@ -637,7 +637,7 @@ void LP_search(lid_t num_layer, len_t tot_batch, Cluster& c, WholeSch& w_sch, bo
 					}
 					root_Node->init_root();
 					// TODO: change to inc. search
-					tmp = Cut::newNode(root_Node, c, nullptr);
+					tmp = SchNode::newNode(root_Node, c, nullptr);
 					if(!tmp->is_valid()){
 						delete tmp;
 						delete root_Node;

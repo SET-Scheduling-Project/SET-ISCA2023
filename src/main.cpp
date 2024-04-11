@@ -237,7 +237,7 @@ int main(int argc, char** argv){
 			(void)new LTreeNode(i, lb, LS_tree);
 		}
 		LS_tree->init_root();
-		LS_res = Cut::newNode(LS_tree, c, nullptr);
+		LS_res = SchNode::newNode(LS_tree, c, nullptr);
 		if(LS_res->is_valid()){
 			LS_tree->confirm();
 			break;

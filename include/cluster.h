@@ -41,7 +41,7 @@ public:
 	cidx_t num_cores() const;
 	pos_t operator[](cidx_t num_chip) const;
 
-	/* Allocation algorithm
+	/* Allocation algorithm (see the definition of try_alloc for more details)
 	 * SET applies a strided allocation algorithm.
 	 * Details can be found in try_alloc.
 	 *

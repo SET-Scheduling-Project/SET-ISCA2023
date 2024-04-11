@@ -49,7 +49,19 @@ pos_t Cluster::operator[](cidx_t num_chip) const{
 	return get_pos(range.first + num_chip);
 }
 
+/* The allocation algorithm in SET.
+ * https://github.com/SET-ISCA2023/Tile-Alloc-Algorithm/blob/master/Optimal_HW-tile_Allocation_Algorithm.pdf
+ *
+ * [Input]
+ * C (Number of HW-Tiles to be allocated)  -> num_cores()
+ * n (Number of children)                  -> childNum
+ * {T_i} (List of NPT)                     -> ops
+ *
+ * [Output]
+ * f (Allocation scheme)                   -> the returned allocRes_t object
+ */
 Cluster::allocRes_t Cluster::try_alloc(utime_t* ops, cidx_t childNum, utime_t totOps) const{
+	// Initialization and border checks:
 	if(childNum <= 0){
 		throw std::invalid_argument("Cluster::try_alloc : childNum must be positive.");
 	}
@@ -62,10 +74,17 @@ Cluster::allocRes_t Cluster::try_alloc(utime_t* ops, cidx_t childNum, utime_t to
 		}
 	}
 
+	// "min_util" in the paper.
 	auto* ratioList = new std::pair<double, cidx_t>[childNum];
+	// Tracks whether the child is allocated in "f"
 	auto* isPlaced  = new bool[childNum]();
+	// "f", the allocation result.
 	Cluster::allocRes_t allocRes = std::make_unique<cidx_t[]>(childNum+1);
 
+	/* The whole algorithm.
+	 * The tail recursion in line 26 of the original algorithm
+	 * is changed to the outer while loop below.
+	 */
 	cidx_t remainNodes = totalNodes;
 	utime_t remainOps = totOps;
 
@@ -106,6 +125,7 @@ Cluster::allocRes_t Cluster::try_alloc(utime_t* ops, cidx_t childNum, utime_t to
 	delete[] isPlaced;
 	delete[] ratioList;
 
+	// Will not use the allocation if util is lower than min_util.
 	double utilization = totOps / (totalNodes * max_time);
 	assert(utilization < 1 + 1e-6);
 	if(utilization < min_util){
@@ -113,6 +133,8 @@ Cluster::allocRes_t Cluster::try_alloc(utime_t* ops, cidx_t childNum, utime_t to
 		return allocRes;
 	}
 
+	// Change "allocRes" from "#cores in subcluster" to
+	// "cidx_t of the first core in subcluster".
 	cidx_t curCoreNum = allocRes[0], nextCoreNum;
 	allocRes[0] = range.first;
 	for (cidx_t i=0; i<childNum; ++i) {

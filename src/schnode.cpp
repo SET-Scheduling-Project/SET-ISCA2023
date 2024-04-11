@@ -9,35 +9,10 @@
 #include "util.h"
 #include "json/json.h"
 
-//sn_ptr SchNode::root=nullptr;
 LayerEngine* SchNode::layerMapper=nullptr;
 len_t SchNode::tot_batch=0;
-SchNode::csn_ptr SchNode::root;
-SchNode::wlid_t SchNode::workload_cnt;
-SchNode::tfid_t SchNode::transferid_cnt;
-std::vector<std::vector<std::vector<SchNode::jsonindex_t> > > SchNode::wlid;
-std::vector<bool> SchNode::from_core, SchNode::weight_from_core, SchNode::to_dram;
-std::vector<std::map<fmap_range, SchNode::jsonindex_t> > SchNode::ofmapid;
-std::vector<std::set<Json::Value> > SchNode::curr_ifmap, SchNode::curr_weight;
-std::map<std::string,lid_t> SchNode::name_to_id;
-Json::Value SchNode::DRAM;
-std::map<Json::Value,SchNode::jsonindex_t> SchNode::DRAM_ofmap_pos;
-std::map<Json::Value,SchNode::jsonindex_t> SchNode::DRAM_weight_pos;
-std::map<SchNode::tfid_t,SchNode::jsonindex_t> SchNode::DRAM_ifmap_pos;
 
-/*
-sn_ptr SchNode::newNode(SchNode::NodeType t, const Bitset& layers, len_t _bgrp, const Cluster& _c){
-	if(layers.count() == 1){
-		return new LNode(layers.first(), _bgrp, _c, this);
-	}else if(t == SchNode::NodeType::S){
-		return new SCut(layers, _bgrp, _c, this);
-	}else{
-		return new TCut(layers, _bgrp, _c, this);
-	}
-}
-*/
-
-sn_ptr Cut::newNode(LTreeNode* _node, const Cluster& _c, Cut* parent){
+SchNode::sn_ptr SchNode::newNode(LTreeNode* _node, const Cluster& _c, Cut* parent){
 	switch (_node->get_type()) {
 		case NodeType::L:
 			return new LNode(_node, _c, parent);
@@ -50,8 +25,61 @@ sn_ptr Cut::newNode(LTreeNode* _node, const Cluster& _c, Cut* parent){
 	return nullptr;
 }
 
-len_t Cut::get_num_bgrp() const{
-	return num_bgrp;
+SchNode::SchNode(NodeType t, const Cluster& _c, cut_ptr _parent, len_t nbatch)
+	:valid(true), type(t), num_batch(nbatch), cluster(_c), parent(_parent),
+	 lnodeList(parent != nullptr ? parent->lnodeList : new nodeList_t){
+	assert(nbatch == 0 || _parent == nullptr || _parent->num_batch % nbatch == 0);
+	if(_parent != nullptr) _parent->add(this);
+}
+
+SchNode::~SchNode(){
+	if(parent == nullptr) delete lnodeList;
+}
+
+void SchNode::setParent(Cut* newParent){
+	const_cast<Cut*&>(parent) = newParent;
+	if(newParent == nullptr){
+		const_cast<nodeList_t*&>(lnodeList) = new nodeList_t;
+	}else{
+		const_cast<nodeList_t*&>(lnodeList) = newParent->lnodeList;
+		newParent->add(this);
+	}
+}
+
+bool SchNode::is_valid() const{
+	return valid;
+}
+
+bool SchNode::is_DRAM_cut() const{
+	return parent == nullptr && type == NodeType::T;
+}
+
+SchNode::NodeType SchNode::get_type() const{
+	return type;
+}
+
+const Cluster& SchNode::get_cluster() const{
+	return cluster;
+}
+
+SchNode::SchCost SchNode::get_cost() const{
+	return cost;
+}
+
+const NoC& SchNode::get_noc() const{
+	return noc;
+}
+
+const BufferUsage& SchNode::get_buf_usage() const{
+	return buf_usage;
+}
+
+const BufferUsage& SchNode::get_ifm_usage() const{
+	return ifm_usage;
+}
+
+const BufferUsage& SchNode::get_wgt_usage() const{
+	return wgt_usage;
 }
 
 energy_t SchNode::get_ubuf_energy() const{
@@ -68,64 +96,6 @@ energy_t SchNode::get_bus_energy() const{
 
 energy_t SchNode::get_mac_energy() const{
 	return mac_energy;
-}
-
-SchNode::SchNode(NodeType t, const Cluster& _c, cut_ptr _parent, len_t nbatch)
-	:valid(true), type(t), num_batch(nbatch), cluster(_c), parent(_parent)
-	/*, cur_vec(nullptr)*/, lnodeList(parent != nullptr ? parent->lnodeList : new nodeList_t){
-	assert(nbatch == 0 || _parent == nullptr || _parent->num_batch % nbatch == 0);
-	if(_parent != nullptr) _parent->add(this);
-}
-
-void SchNode::setParent(Cut* newParent){
-	const_cast<Cut*&>(parent) = newParent;
-	if(newParent == nullptr){
-		const_cast<nodeList_t*&>(lnodeList) = new nodeList_t;
-	}else{
-		const_cast<nodeList_t*&>(lnodeList) = newParent->lnodeList;
-		newParent->add(this);
-	}
-}
-
-SchNode::~SchNode(){
-	if(parent == nullptr) delete lnodeList;
-	// lnodeList = nullptr;
-}
-
-bool SchNode::is_valid() const{
-	return valid;
-}
-
-SchNode::SchCost SchNode::get_cost() const{
-	return cost;
-}
-
-SchNode::NodeType SchNode::get_type() const{
-	return type;
-}
-
-const NoC& SchNode::get_noc() const{
-	return noc;
-}
-
-const Cluster& SchNode::getCluster() const{
-	return cluster;
-}
-
-const BufferUsage& SchNode::get_buf_usage() const{
-	return buf_usage;
-}
-
-const BufferUsage& SchNode::get_ifm_usage() const{
-	return ifm_usage;
-}
-
-const BufferUsage& SchNode::get_wgt_usage() const{
-	return wgt_usage;
-}
-
-bool SchNode::is_DRAM_cut() const{
-	return parent == nullptr && type == NodeType::T;
 }
 
 void SchNode::print_res(std::ostream& os) const{
@@ -150,19 +120,6 @@ std::ostream& operator<<(std::ostream& os, const SchNode* sch){
 	return os;
 }
 
-/*
-SchNode::SchNode(NodeType t, len_t _bgrp, const Cluster& _c)
-	:SchNode(t, _bgrp, _c, this){
-	assert(tot_batch % _bgrp == 0);
-}
-*/
-/*
-SchNode* SchNode::search_all(lid_t from, lid_t to, len_t bgrp){
-// Input: cluster
-//
-}
-*/
-
 bool LNode::search(){
 	auto res = layerMapper->search(this);
 	if(!res.isValid()) return false;
@@ -174,21 +131,6 @@ bool LNode::search(){
 	return true;
 }
 
-/*LNode::LNode(lid_t _layerid, const Cluster& _c, cut_ptr _parent, len_t nbatch)
-	:SchNode(NodeType::L, _c, _parent, nbatch), layerid(_layerid),
-	  layert(network->getNode(_layerid)), place_sch(_c, layert, nbatch),
-	dirp_set(), to_dram(){
-	search();
-	if(lnodes.size() > layerid){
-		lnodes[layerid]=this;
-	}else if(lnodes.size() == layerid){
-		lnodes.push_back(this);
-	}else{
-		lnodes.resize(layerid+1, nullptr);
-		lnodes.back()=this;
-	}
-}*/
-
 LNode::LNode(LTreeNode *_node, const Cluster& _c, SchNode::cut_ptr _parent)
 	:SchNode(NodeType::L, _c, _parent, _node->get_tot_batch()), layerid(_node->layers().first()),
 	  layert(network->getNode(layerid)), /*place_sch(cluster, layert, _node->get_tot_batch()),*/
@@ -196,34 +138,12 @@ LNode::LNode(LTreeNode *_node, const Cluster& _c, SchNode::cut_ptr _parent)
 	searchLayer();
 }
 
-SchNode* LNode::copy(Cut* newParent) const{
-	LNode* node = new LNode(*this);
-	node->setParent(newParent);
-	(*node->lnodeList)[layerid] = node;
-	return node;
-}
-
-void LNode::searchInc(LTreeNode* node){
-	(void) node;
-	// if(!node->isModified()) return;
-	// We'll never use this function.
-	// Since LNode can't be child-modified.
-	assert(false);
-	return;
+LNode::~LNode(){
+	(*lnodeList)[layerid] = nullptr;
 }
 
 void LNode::searchLayer(){
-	//std::cout << "Starting " << layert.layer().get_name() << std::endl;
 	valid = search();
-	/*
-	std::cout << place_sch.part;
-	for(int i=0;i<4;++i){
-		std::cout << ' ' << (int)place_sch.order[i];
-	}
-	std::cout << ' ' << cost;
-	std::cout << std::endl;
-	*/
-	//std::cout << cost.time << " v.s. " << noc.get_time() << std::endl;
 	if(!valid){
 		return;
 	}
@@ -257,14 +177,21 @@ void LNode::searchLayer(){
 	}
 }
 
-/*
-LNode::LNode(const Bitset& _layers, len_t _bgrp, const Cluster& _c, SchNode::csn_ptr _parent)
-	:SchNode(NodeType::L, _bgrp, _c, _parent),
-	  layert(network->getNode(_layers.first())){
-	assert(_layers.count() == 1);
-
+void LNode::searchInc(LTreeNode* node){
+	(void) node;
+	// if(!node->isModified()) return;
+	// We'll never use this function.
+	// Since LNode can't be child-modified.
+	assert(false);
+	return;
 }
-*/
+
+SchNode* LNode::copy(Cut* newParent) const{
+	LNode* node = new LNode(*this);
+	node->setParent(newParent);
+	(*node->lnodeList)[layerid] = node;
+	return node;
+}
 
 bool LNode::contains(lid_t _layerid) const{
 	return _layerid == layerid;
@@ -286,18 +213,6 @@ bool LNode::get_to_dram() const{
 	return to_dram;
 }
 
-LNode::~LNode(){
-	(*lnodeList)[layerid] = nullptr;
-}
-
-const Cut* LNode::get_lca(const LNode* node1, const LNode* node2){
-	const Cut* lca = node2->parent;
-	while (!lca->layers.contains(node1->layerid)) {
-		lca = lca->parent;
-	}
-	return lca;
-}
-
 void LNode::print_struct(std::string pad, std::ostream& os) const{
 	os << pad << layert.name() << ' ' << num_batch << ' ' << place_sch;
 	os << " util:" << tileSch.util*100 << '/' << tileSch.tot_util*100;
@@ -310,16 +225,64 @@ void LNode::print_struct(std::string pad, std::ostream& os) const{
 	os << std::endl;
 }
 
-/*
-Cut::Cut(NodeType t, const Bitset& _layers, const Cluster& _c, csn_ptr _parent, len_t nbgrp, len_t nbatch)
-	:SchNode(t, _c, _parent, _bgrp), layers(_layers){
-	assert(t!=NodeType::L);
-	assert(_layers.count() > 1);
-}
-*/
 Cut::Cut(SchNode::NodeType t, LTreeNode* node, const Cluster& _c, SchNode::cut_ptr _parent)
 	:SchNode(t, _c, _parent, node->get_tot_batch()), curNode(nullptr),
 	  layers(node->layers()), num_bgrp(node->get_bgrp_num()){
+}
+
+Cut::~Cut(){
+	for(auto child: children){
+		delete child;
+	}
+}
+
+/* Constructs a new child corresponding to "_node".
+ * During incremental search, will reuse old SchNode children if possible.
+ * (When the LTreeNode is not marked with "new", then it's reusable)
+ */
+SchNode::sn_ptr Cut::newNode(LTreeNode* _node, const Cluster& _c){
+	if(curNode == nullptr) return SchNode::newNode(_node, _c, this);
+
+	if(_node->isNew()) return SchNode::newNode(_node, _c, this);
+
+	const Bitset& layers = _node->layers();
+	bool found = false, reSearch = false;
+
+	while(!oldChildren.empty()){
+		SchNode* node = oldChildren.front();
+		oldChildren.pop_front();
+
+		switch(node->get_type()){
+		case NodeType::L:
+			if(layers.count() == 1 && node->contains(layers.first()))
+				found = true;
+			break;
+		case NodeType::S:
+			reSearch = (_c != node->get_cluster());
+		[[clang::fallthrough]];
+		case NodeType::T:
+			Cut* cut = static_cast<Cut*>(node);
+			if(cut->layers == layers) found = !reSearch;
+			break;
+		}
+
+		if(found){
+			children.push_back(node);
+			if(_node->isModified())
+				node->searchInc(_node);
+			return node;
+		}
+
+		delete node;
+		if(reSearch) return SchNode::newNode(_node, _c, this);
+	}
+
+	std::cerr << "[Warning] Cannot find old child in oldChildren." << std::endl;
+	return SchNode::newNode(_node, _c, this);
+}
+
+void Cut::add(SchNode* child){
+	children.push_back(child);
 }
 
 void Cut::searchInc(LTreeNode* node){
@@ -339,56 +302,16 @@ void Cut::searchInc(LTreeNode* node){
 	curNode = nullptr;
 }
 
-sn_ptr Cut::newNode(LTreeNode* _node, const Cluster& _c){
-	if(curNode == nullptr) return newNode(_node, _c, this);
-	if(_node->isNew()) return newNode(_node, _c, this);
-	const Bitset& layers = _node->layers();
-	bool found = false, reSearch = false;
-	while(!oldChildren.empty()){
-		SchNode* node = oldChildren.front();
-		oldChildren.pop_front();
-		switch(node->get_type()){
-		case NodeType::L:
-			if(layers.count() == 1 && node->contains(layers.first()))
-				found = true;
-			break;
-		case NodeType::S:
-			reSearch = (_c != node->getCluster());
-		[[clang::fallthrough]];
-		case NodeType::T:
-			Cut* cut = static_cast<Cut*>(node);
-			if(cut->layers == layers) found = !reSearch;
-			break;
-		}
-		if(found){
-			children.push_back(node);
-			if(_node->isModified())
-				node->searchInc(_node);
-			return node;
-		}
-		delete node;
-		if(reSearch) return newNode(_node, _c, this);
-	}
-	std::cerr << "[Warning] Cannot find old child in oldChildren." << std::endl;
-	return newNode(_node, _c, this);
-}
-
-void Cut::add(SchNode* child){
-	children.push_back(child);
+bool Cut::contains(lid_t layerid) const{
+	return layers.contains(layerid);
 }
 
 const SchNode::sn_vec& Cut::getChildren() const{
 	return children;
 }
 
-bool Cut::contains(lid_t layerid) const{
-	return layers.contains(layerid);
-}
-
-Cut::~Cut(){
-	for(auto child: children){
-		delete child;
-	}
+len_t Cut::get_num_bgrp() const{
+	return num_bgrp;
 }
 
 void Cut::print_struct(std::string pad, std::ostream& os) const{
@@ -403,29 +326,13 @@ void Cut::print_struct(std::string pad, std::ostream& os) const{
 		child->print_struct(pad, os);
 	}
 }
-/*
-TCut::TCut(const Bitset& _layers, len_t _bgrp, const Cluster& _c, csn_ptr _parent)
-	:Cut(NodeType::T, _layers, _bgrp, _c, _parent){}
-*/
-TCut::TCut(LTreeNode *_node, const Cluster& _c, SchNode::cut_ptr _parent)
-	:Cut(NodeType::T, _node, _c, _parent){
-	TCut::construct(_node);
-}
-
-SchNode* TCut::copy(Cut* newParent) const{
-	TCut* cut = new TCut(*this);
-	cut->setParent(newParent);
-	cut->children.clear();
-	for(auto child : children){
-		child->copy(cut);
-	}
-	return cut;
-}
 
 void TCut::construct(LTreeNode* node){
 	bool is_top = (parent == nullptr);
 	bool is_seg = (!is_top) && parent->is_DRAM_cut();
 	bool wgt_shift = is_seg && (num_bgrp == 1);
+
+	// Recursively construct (and search) each child.
 	sn_ptr last_p = nullptr;
 	cost.energy = 0;
 	cost.time = 0;
@@ -434,13 +341,6 @@ void TCut::construct(LTreeNode* node){
 		sn_ptr p = newNode(child, cluster);
 		if(!p->is_valid()){
 			valid = false;
-			/*sn_ptr x = p;
-			while(dynamic_cast<LNode*>(x)==nullptr){
-				Cut* c = dynamic_cast<Cut*>(x);
-				x =c->getChildren().back();
-			}
-			std::cout << dynamic_cast<LNode*>(x)->getLayer().name() << std::endl;
-			*/
 			return;
 		}
 		if(!is_top){
@@ -480,6 +380,8 @@ void TCut::construct(LTreeNode* node){
 		mac_energy += p->get_mac_energy();
 		last_p = p;
 	}
+
+	// Update and check buffer usage.
 	if(!is_top){
 		if(num_bgrp == 1){
 			if(wgt_shift){
@@ -507,6 +409,7 @@ void TCut::construct(LTreeNode* node){
 			return;
 		}
 	}
+
 	cost *= num_bgrp;
 	noc *= num_bgrp;
 	ubuf_energy *= num_bgrp;
@@ -520,18 +423,13 @@ void TCut::construct(LTreeNode* node){
 	}
 }
 
-/*
-SCut::SCut(const Bitset& _layers, len_t _bgrp, const Cluster& _c, csn_ptr _parent)
-	:Cut(NodeType::S, _layers, _bgrp, _c, _parent){}
-*/
-SCut::SCut(LTreeNode *_node, const Cluster& _c, SchNode::cut_ptr _parent)
-	:Cut(NodeType::S, _node, _c, _parent),
-	 stage(_node->get_stages()), num_stage(_node->get_num_stage()){
-	SCut::construct(_node);
+TCut::TCut(LTreeNode *_node, const Cluster& _c, SchNode::cut_ptr _parent)
+	:Cut(NodeType::T, _node, _c, _parent){
+	TCut::construct(_node);
 }
 
-SchNode* SCut::copy(Cut* newParent) const{
-	SCut* cut = new SCut(*this);
+SchNode* TCut::copy(Cut* newParent) const{
+	TCut* cut = new TCut(*this);
 	cut->setParent(newParent);
 	cut->children.clear();
 	for(auto child : children){
@@ -545,17 +443,23 @@ void SCut::construct(LTreeNode* node){
 	const auto& cnodes = node->get_children();
 	cidx_t cnum = static_cast<cidx_t>(cnodes.size());
 	assert(cnum > 0);
+
+	// Initialize utime list.
 	utime_t* tlist = new utime_t[cnum];
 	utime_t* cur_item = tlist;
 	for(auto child: cnodes){
 		*(cur_item++) = child->get_utime();
 	}
+
+	// Try to allocate subclusters.
 	auto allocRes = cluster.try_alloc(tlist, cnum);
 	delete[] tlist;
 	if(!allocRes){
 		valid = false;
 		return;
 	}
+
+	// Recursively construct (and search) each child.
 	cidx_t i=0;
 	cycle_t max_time = 0;
 	cost.energy = 0;
@@ -570,16 +474,6 @@ void SCut::construct(LTreeNode* node){
 			valid = false;
 			return;
 		}
-		/*if(static_cast<LNode*>(p)->getLayer().name() == "conv2_0_b"){
-			std::cout << "BU:" << std::endl;
-			for(auto x: p->get_buf_usage().usage){
-				std::cout << (int)x.first.x << ' ' << (int)x.first.y << ' ' << x.second << std::endl;
-			}
-			std::cout << "CU:" << std::endl;
-			for(auto x: buf_usage.usage){
-				std::cout << (int)x.first.x << ' ' << (int)x.first.y << ' ' << x.second << std::endl;
-			}
-		}*/
 		if(!(buf_usage += p->get_buf_usage())){
 			valid = false;
 			return;
@@ -602,15 +496,19 @@ void SCut::construct(LTreeNode* node){
 		bus_energy += p->get_bus_energy();
 		mac_energy += p->get_mac_energy();
 	}
+
+	// Update and check buffer usage.
 	if(!(buf_usage + wgt_usage)){
 		valid = false;
 		return;
 	}
+
 	ifm_usage.multiple(num_bgrp);
 	if(!(is_seg || ifm_usage)){
 		valid = false;
 		return;
 	}
+
 	cost.time = max_time * (num_stage + num_bgrp);
 	cost.energy *= num_bgrp;
 	noc *= num_bgrp;
@@ -625,312 +523,24 @@ void SCut::construct(LTreeNode* node){
 	}
 }
 
-/*
-LNode::SchCost LNode::search(lid_t depth){
-	//printf("\tL\t%d\t%d\t%d\t%d\n",depth,from,to,cluster.num_cores());
-	// Search best scheme for each partition.
-	// Add the cost of all sequential deps.
-	// Return the best scheme.
-	(void)depth;
-	len_t tot_part = static_cast<len_t>(cluster.num_cores());
-	len_t totK = layert.workload().K;
-	len_t totB = bgrp;
-	double max_util = -1;
-	len_t maxK=0, maxB=0;
-	len_t kpart, bpart = tot_part;
-	SchCost cost;
-	part_engine;
-	init(100, wl);
-	for (Part part = gen_part(finish, cost);){
-
-	}
-	struct PlaceInfo{
-	Cluster
-	Part
-	wl
-	};
-	PlaceInfo last, P
-
-	struct NoCTraffic{
-		access_t x[];
-	};
-
-
-	do{
-		kpart = tot_part/bpart;
-		if(tot_part%bpart == 0){
-			double cur_util = DIVCEIL(totK,kpart) * DIVCEIL(totB, bpart);
-			cur_util *= kpart*bpart;
-			cur_util = (totK*totB)/cur_util;
-			if(cur_util >= Cluster::min_util){
-				max_util = 2;
-				Node::Workload wl = layert.workload();
-				wl.N = DIVCEIL(totB, bpart);
-				wl.K = DIVCEIL(totK, kpart);
-				wl.calc_op();
-				CoreMapper::MapCost c = mapper->genMapping(wl).cost;
-				if(c.energy < energy_inf)
-					c.energy *= tot_part;
-				if(c.cost() < cost.cost()){
-					cost.energy = c.energy;
-					cost.time = c.time;
-				}
-			}else if(cur_util > max_util){
-				max_util = cur_util;
-				maxK = kpart;
-				maxB = bpart;
-			}
-		}
-		bpart = tot_part/++kpart;
-	}while(bpart>0);
-	if(max_util < 1.5 && max_util > 0){
-		Node::Workload wl = layert.workload();
-		wl.N = DIVCEIL(totB, maxB);
-		wl.K = DIVCEIL(totK, maxK);
-		wl.calc_op();
-		CoreMapper::MapCost c = mapper->genMapping(wl).cost;
-		if(c.energy < energy_inf)
-			c.energy *= tot_part;
-		if(c.cost() < cost.cost()){
-			cost.energy = c.energy;
-			cost.time = c.time;
-		}
-	}
-	if(cost.energy < energy_inf){
-		cost.energy *= tot_batch / bgrp;
-	}
-	return cost;
+SCut::SCut(LTreeNode *_node, const Cluster& _c, SchNode::cut_ptr _parent)
+	:Cut(NodeType::S, _node, _c, _parent),
+	 stage(_node->get_stages()), num_stage(_node->get_num_stage()){
+	SCut::construct(_node);
 }
 
-TCut::SchCost TCut::search(lid_t depth){
-	//printf("\tT\t%d\t%d\t%d\t%d\n",depth,from,to,cluster.num_cores());
-	SchCost tot_cost(0,0);
-	len_t tot_bgrps = tot_batch / bgrp;
-	if(depth <= 1){
-		for(lid_t i=from;i<to;++i){
-			sn_ptr p= new LNode(i, bgrp, cluster);
-			children.push_back(p);
-			SchCost c = p->search(0);
-			// Add
-			// TODO: optimize time.
-			tot_cost += c;
-		}
-		return tot_cost;
+SchNode* SCut::copy(Cut* newParent) const{
+	SCut* cut = new SCut(*this);
+	cut->setParent(newParent);
+	cut->children.clear();
+	for(auto child : children){
+		child->copy(cut);
 	}
-	--depth;
-	// Search each in DP:
-	// DP[l] = DP[l-k]+search(l-k+1,k)
-	sn_vec* vecs = new sn_vec[to-from];
-	SchCost* costs = new SchCost[to-from];
-	sn_ptr p = new LNode(from, bgrp, cluster);
-	vecs[0].push_back(p);
-	costs[0] = p->search(depth);
-	for (lid_t i=from+2;i<=to;++i) {
-		//if(depth > 1) //printf("HERE\t%d\n", i);
-		sn_vec& cur_vec = vecs[i-from-1];
-		SchCost& cur_cost = costs[i-from-1];
-		// Cur seg:[from,i)
-		if(i<to){
-			p = new SCut(from, i, bgrp, cluster);
-			cur_vec.push_back(p);
-			cur_cost = p->search(depth);
-		}
-		for (lid_t j=from+1;j<i;++j) {
-			if(costs[j-from-1].cost(tot_bgrps) >= cost_inf) continue;
-			if(j == i-1){
-				p = new LNode(j,bgrp,cluster);
-			}else{
-				p = new SCut(j,i,bgrp,cluster);
-			}
-
-			// Use tot_cost as buffer
-			tot_cost = p->search(depth);
-			// Add
-			// TODO: optimize time.
-			tot_cost += costs[j-from-1];
-			if(tot_cost.cost(tot_bgrps) < cur_cost.cost(tot_bgrps)){
-				cur_cost = tot_cost;
-				cur_vec = vecs[j-from-1];
-				cur_vec.push_back(p);
-			}
-		}
-	}
-	tot_cost = costs[to-from-1];
-	if(tot_cost.cost(tot_bgrps) < cost_inf){
-		children = vecs[to-from-1];
-	}
-	delete[] vecs;
-	delete[] costs;
-	return tot_cost;
+	return cut;
 }
-*/
-/*
-// TODO: remove static.
-static double max_reltime;
-
-cidx_t part_cores(access_t cur_ops, access_t rem_ops, cidx_t rem_cores){
-	double x = cur_ops;
-	x *= rem_cores;
-	x /= cur_ops + rem_ops;
-	//if(x<=1) return 1;
-	//if(x>=rem_cores - 1) return rem_cores;
-	cidx_t xm = static_cast<cidx_t>(floor(x));
-	if(rem_cores * (x-xm) > x){
-		++xm;
-		if(rem_ops>max_reltime*(rem_cores - xm)) return 0;
-	}else if(cur_ops>max_reltime*xm){
-		return 0;
-	}
-	return xm;
-}
-
-
-void SCut::search(lid_t depth, len_t c_bgrp, SchCost& last_cost){
-	// TODO: remove static.
-	static access_t op_cnum[MAX_CHIPS];
-	SchCost tot_cost(0,0);
-	len_t tot_bgrps = tot_batch / bgrp;
-	len_t nbgrp = bgrp/c_bgrp;
-	cycle_t max_time=0;
-	access_t total_ops = network->total_op(from, to);
-	cidx_t num_cores = cluster.num_cores();
-	if(depth <= 1){
-		sn_vec cur_clist;
-		// Naive method
-		if(num_cores < to-from) return;
-		for(lid_t i=from;i<to;++i){
-			op_cnum[i] = network->total_op(i, i+1);
-		}
-		if(!cluster.try_alloc(op_cnum+from, static_cast<cidx_t>(to-from), total_ops)) return;
-		for(lid_t i=from;i<to;++i){
-			sn_ptr p= new LNode(i, c_bgrp,
-				cluster.sub_cluster(static_cast<cidx_t>(i-from)));
-			cur_clist.push_back(p);
-			SchCost c = p->search(0);
-			max_time = MAX(max_time, c.time);
-			// Add
-			// TODO: optimize time.
-			tot_cost += c;
-		}
-		tot_cost.time += max_time * (nbgrp - 1);
-		if(tot_cost.cost(tot_bgrps) < last_cost.cost(tot_bgrps)){
-			children = cur_clist;
-			last_cost = tot_cost;
-		}
-		return;
-	}
-	if(num_cores < 2) return;
-	--depth;
-	max_reltime = total_ops;
-	max_reltime /= num_cores;
-	max_reltime *= 1.0/Cluster::min_util;
-	// Search each in DP:
-	// DP[l] = DP[l-k]+search(l-k+1,k)
-	sn_vec* vecs = new sn_vec[to-from];
-	SchCost* costs = new SchCost[to-from];
-	for(int i=0;i<to-from;++i){
-		//printf("\t\t\t\t\t%f\t%d\n",0.01,costs[i].cost(tot_bgrps) >= cost_inf);
-	}
-	cycle_t* max_times = new cycle_t[to-from];
-	cidx_t* remain_cores = new cidx_t[to-from];
-	access_t cur_ops = network->total_op(from, from+1);
-	access_t remain_ops = total_ops - cur_ops;
-	cidx_t cores = part_cores(cur_ops,remain_ops,num_cores);
-	sn_ptr p;
-	if(cores > 0){
-		remain_cores[0] = num_cores - cores;
-		p = new LNode(from, c_bgrp, cluster.sub_cluster(0, cores));
-		vecs[0].push_back(p);
-		costs[0] = p->search(depth);
-		max_times[0] = costs[0].time;
-		costs[0].time *= nbgrp;
-	}
-	for (lid_t i=from+2;i<=to;++i) {
-		sn_vec& cur_vec = vecs[i-from-1];
-		SchCost& cur_cost = costs[i-from-1];
-		cycle_t& cur_mtime = max_times[i-from-1];
-		cidx_t& rem_cores = remain_cores[i-from-1];
-
-		remain_ops = network->total_op(i, to);
-		// Cur seg:[from,i)
-		if(i<to){
-			cur_ops = network->total_op(from, i);
-			cores = part_cores(cur_ops,remain_ops,num_cores);
-			if(cores > 0){
-				p = new TCut(from, i, c_bgrp, cluster.sub_cluster(0, cores));
-				cur_vec.push_back(p);
-				cur_cost = p->search(depth);
-				cur_mtime = cur_cost.time;
-				cur_cost.time *= nbgrp;
-				rem_cores = num_cores - cores;
-			}
-		}
-		for (lid_t j=from+1;j<i;++j) {
-			if(costs[j-from-1].cost(tot_bgrps) >= cost_inf) continue;
-			cidx_t last_cores = remain_cores[j-from-1];
-			if(i<to){
-				if(last_cores <= 1) continue;
-				cur_ops = network->total_op(j, i);
-				cores = part_cores(cur_ops,remain_ops,last_cores);
-				if(cores <= 0) continue;
-			}else{
-				cores = last_cores;
-				//printf("C:%d,L:%d\n",cores,last_cores);
-			}
-			if(j == i-1){
-				p = new LNode(j,c_bgrp, cluster.sub_cluster(num_cores - last_cores, cores));
-			}else{
-				p = new TCut(j,i,c_bgrp, cluster.sub_cluster(num_cores - last_cores, cores));
-			}
-
-			// Use tot_cost as buffer
-			tot_cost = p->search(depth);
-			// Add
-			// TODO: optimize time.
-			max_time = MAX(tot_cost.time, cur_mtime);
-			tot_cost += costs[j-from-1];
-			tot_cost.time += (nbgrp-1)*(max_time-cur_mtime);
-			if(tot_cost.cost(tot_bgrps) < cur_cost.cost(tot_bgrps)){
-				cur_cost = tot_cost;
-				cur_mtime = max_time;
-				cur_vec = vecs[j-from-1];
-				cur_vec.push_back(p);
-				rem_cores = last_cores - cores;
-				//printf("SET:%d\n",rem_cores);
-				//printf("Found\t%d\t%d\t%d\t%d\n",from, to,j,i);
-			}
-		}
-	}
-	tot_cost = costs[to-from-1];
-	if(tot_cost.cost(tot_bgrps) < last_cost.cost(tot_bgrps)){
-		children = vecs[to-from-1];
-		last_cost = tot_cost;
-	}
-	delete[] vecs;
-	delete[] costs;
-	delete[] max_times;
-	delete[] remain_cores;
-	return;
-}
-
-SCut::SchCost SCut::search(lid_t depth){
-	//printf("\tS\t%d\t%d\t%d\t%d\n",depth,from,to,cluster.num_cores());
-	// For bgrp from small to large
-	SchCost tot_cost;
-	for (len_t c_bgrp = 1;c_bgrp <= bgrp;++c_bgrp) {
-		if(bgrp % c_bgrp != 0) continue;
-		search(depth, c_bgrp, tot_cost);
-	}
-	return tot_cost;
-}
-*/
 
 SchNode::SchCost::SchCost(energy_t _energy, cycle_t _time)
 	:energy(_energy),time(_time){}
-
-cost_t SchNode::SchCost::cost(len_t nbatch) const{
-	return calc_cost(energy, time*nbatch);
-}
 
 SchNode::SchCost&SchNode::SchCost::operator+=(const SchNode::SchCost& other){
 	if(!(isValid() && other.isValid())){
@@ -960,8 +570,36 @@ bool SchNode::SchCost::isValid() const{
 	return energy < energy_inf;
 }
 
+cost_t SchNode::SchCost::cost(len_t nbatch) const{
+	return calc_cost(energy, time*nbatch);
+}
+
 std::ostream& operator<<(std::ostream& os, const SchNode::SchCost& cost){
 	return os << "E:" << cost.energy << ", T:" << cost.time << ", Cost:" << cost.cost();
+}
+
+
+// **************** Code for IR generation ****************
+
+SchNode::csn_ptr SchNode::root;
+SchNode::wlid_t SchNode::workload_cnt;
+SchNode::tfid_t SchNode::transferid_cnt;
+std::vector<std::vector<std::vector<SchNode::jsonindex_t> > > SchNode::wlid;
+std::vector<bool> SchNode::from_core, SchNode::weight_from_core, SchNode::to_dram;
+std::vector<std::map<fmap_range, SchNode::jsonindex_t> > SchNode::ofmapid;
+std::vector<std::set<Json::Value> > SchNode::curr_ifmap, SchNode::curr_weight;
+std::map<std::string,lid_t> SchNode::name_to_id;
+Json::Value SchNode::DRAM;
+std::map<Json::Value,SchNode::jsonindex_t> SchNode::DRAM_ofmap_pos;
+std::map<Json::Value,SchNode::jsonindex_t> SchNode::DRAM_weight_pos;
+std::map<SchNode::tfid_t,SchNode::jsonindex_t> SchNode::DRAM_ifmap_pos;
+
+const Cut* LNode::get_lca(const LNode* node1, const LNode* node2){
+	const Cut* lca = node2->parent;
+	while (!lca->layers.contains(node1->layerid)) {
+		lca = lca->parent;
+	}
+	return lca;
 }
 
 Json::Value SchNode::IR_gen() const{
@@ -1064,7 +702,7 @@ Json::Value SchNode::IR_gen() const{
 					buffer["lower"] = wl["weight"]["lower"];
 					buffer["upper"] = wl["weight"]["upper"];
 					buffer["workload_id"] = wl["workload_id"];
-					buffer["block"] = wl["weight"]["size"].asUInt() / 8 + 1023 >> 10;
+					buffer["block"] = (wl["weight"]["size"].asUInt() / 8 + 1023) >> 10;
 					buffer["source"] = wl["weight_temp"][buffer["layer"].asString()+"_"+std::to_string(buffer["lower"][0u].asUInt())]["source"];
 					for(Json::Value &source: buffer["source"]){
 						buffer["transfer_id"].append(source["transfer_id"]);
@@ -1099,32 +737,6 @@ Json::Value SchNode::IR_gen() const{
 	return ret;
 }
 
-
-void SCut::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<Json::Value>& workload_list) const{
-	const len_t stage_size = num_batch/num_bgrp;
-	for(len_t stage_id=0; stage_id < num_bgrp+num_stage; ++stage_id){
-		size_t i=0;
-		for(auto child : children){
-			if(stage_id >= stage[i] && stage_id < stage[i]+num_bgrp){
-				len_t stage_offset = (stage_id - stage[i]) * stage_size + batch_offset;
-				child->add_workload_and_dfs(stage_offset, segment, workload_list);
-			}
-			++i;
-		}
-	}
-}
-
-void TCut::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<Json::Value>& workload_list) const{
-	for(len_t i=0;i<num_batch;i+=num_batch/num_bgrp){
-		for(auto& child : children){
-			child->add_workload_and_dfs(batch_offset + i, segment, workload_list);
-			if(this == root){
-				segment++;
-			}
-		}
-	}
-}
-
 const LNode* LNode::get_lnode_by_id(lid_t id) const{
 	assert(contains(id));
 	return this;
@@ -1135,7 +747,7 @@ const LNode* Cut::get_lnode_by_id(lid_t id) const{
 		if(child->contains(id))
 			return child->get_lnode_by_id(id);
 	}
-	assert(0);
+	assert(false);
 	return nullptr;
 }
 
@@ -1348,7 +960,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 							workload["weight"]["transfer_id"].append(ifmap["transfer_id"]);
 							workload["weight_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
 						}
-						
+
 
 						Json::Value destination;
 						destination["type"] = "core";
@@ -1538,7 +1150,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 						workload["weight"]["transfer_id"].append(ofmap_transfer_id);
 						workload["weight_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
 					}
-					
+
 				}
 			}
 			if(layert.getIfmPrevs().contains(layerno)){
@@ -1692,7 +1304,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 						}
 						Json::Value buffer;
 						buffer["type"] = lnode->getLayer().getIfmPrevs().contains(layerid) ? "ifmap" : "weight";
-						if(!lnode->getLayer().getIfmPrevs().contains(layerid)) 
+						if(!lnode->getLayer().getIfmPrevs().contains(layerid))
 							buffer["from_core"] = true;
 						buffer["layer"] = node.layer().get_name();
 						buffer["lower"].append(next_range.b.from);
@@ -1796,5 +1408,30 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 		from_core.push_back(from_other_core);
 		weight_from_core.push_back(weight_from_other_core);
 		SchNode::to_dram.push_back(false);
+	}
+}
+
+void TCut::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<Json::Value>& workload_list) const{
+	for(len_t i=0;i<num_batch;i+=num_batch/num_bgrp){
+		for(auto& child : children){
+			child->add_workload_and_dfs(batch_offset + i, segment, workload_list);
+			if(this == root){
+				segment++;
+			}
+		}
+	}
+}
+
+void SCut::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<Json::Value>& workload_list) const{
+	const len_t stage_size = num_batch/num_bgrp;
+	for(len_t stage_id=0; stage_id < num_bgrp+num_stage; ++stage_id){
+		size_t i=0;
+		for(auto child : children){
+			if(stage_id >= stage[i] && stage_id < stage[i]+num_bgrp){
+				len_t stage_offset = (stage_id - stage[i]) * stage_size + batch_offset;
+				child->add_workload_and_dfs(stage_offset, segment, workload_list);
+			}
+			++i;
+		}
 	}
 }
