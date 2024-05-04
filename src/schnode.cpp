@@ -125,6 +125,7 @@ bool LNode::search(){
 	ubuf_energy = res.extUbufEnergy;
 	place_sch = std::move(res.place);
 	tileSch = res.tileSch;
+	memLayout = res.oMemLayout;
 	cost = res.totCost;
 	return true;
 }
@@ -214,6 +215,10 @@ bool LNode::get_to_dram() const{
 
 const CoreMapper::CoreMapping& LNode::get_tileSch() const {
 	return tileSch;
+}
+
+const MemLayout& LNode::get_memLayout() const {
+	return memLayout;
 }
 
 void LNode::print_struct(std::string pad, std::ostream& os) const{

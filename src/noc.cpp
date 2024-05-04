@@ -5,6 +5,7 @@
 
 #include "cluster.h"
 #include "datalayout.h"
+#include "memlayout.h"
 #include "util.h"
 
 
@@ -14,6 +15,8 @@ bw_t NoC::DRAM_bw;
 bw_t NoC::NoC_bw;
 std::vector<pos_t> NoC::dram_list;
 bool NoC::unicast_only;
+bool NoC::DRAM_interleave;
+thread_local NoC NoC::_noc(false);
 
 NoC::NoC(bool _calc_bw): calc_bw(_calc_bw), tot_hops(0), tot_DRAM_acc(0){}
 
@@ -30,61 +33,120 @@ void NoC::clear(){
 	link_hops.clear();
 }
 
-void NoC::fromRemoteMem(const DataLayout& toLayout){
-	auto rLen = toLayout.rangeLength();
+void NoC::_fromRemoteMem(const std::vector<pos_t>& from, const DataLayout& to){
+	auto rLen = to.rangeLength();
 	for(cidx_t i=0; i<rLen; ++i){
-		auto it = toLayout.at(i);
+		auto it = to.at(i);
 		vol_t curSize = it.range.size();
 		if(curSize <= 0) continue;
 		if(it.numTile == 1){
-			unicast_dram(it.tiles[0], curSize);
+			unicast_dram(it.tiles[0], curSize, from);
 		}else{
-			multicast_dram(it.tiles, it.numTile, curSize);
+			multicast_dram(it.tiles, it.numTile, curSize, from);
 		}
 	}
 }
 
-void NoC::fromRemoteMem(const DataLayout& toLayout, len_t fromC, len_t toC){
-	if(toC <= fromC) return;
+void NoC::_fromRemoteMem(const std::vector<pos_t>& from, const DataLayout& to, len_t fromC, len_t toC){
 	fmap_range::dim_range truncRange = {fromC, toC};
 
-	auto rLen = toLayout.rangeLength();
+	auto rLen = to.rangeLength();
 	for(cidx_t i=0; i<rLen; ++i){
-		auto it = toLayout.at(i);
+		auto it = to.at(i);
 		fmap_range range = it.range;
 		range.c = range.c.intersect(truncRange);
 		vol_t curSize = range.size();
 		if(curSize <= 0) continue;
 		if(it.numTile == 1){
-			unicast_dram(it.tiles[0], curSize);
+			unicast_dram(it.tiles[0], curSize, from);
 		}else{
-			multicast_dram(it.tiles, it.numTile, curSize);
+			multicast_dram(it.tiles, it.numTile, curSize, from);
 		}
 	}
 }
 
-void NoC::toRemoteMem(const UniqueLayout& fromLayout){
-	for(cidx_t i=0; i<fromLayout.totLength(); ++i){
-		auto it = fromLayout[i];
+void NoC::fromRemoteMem(const DataLayout& to){
+	if(DRAM_interleave){
+		_fromRemoteMem(dram_list, to);
+		return;
+	}
+
+	// Do not interleave, find nearest DRAM.
+	pos_t d = nearest_dram_to(to);
+	if(!calc_bw){
+		tot_hops += _noc.tot_hops;
+		tot_DRAM_acc += _noc.tot_DRAM_acc;
+		return;
+	}
+	_fromRemoteMem({d}, to);
+}
+
+void NoC::fromRemoteMem(const MemLayout& from, const DataLayout& to){
+	const auto& drams = from.get_layouts();
+	_fromRemoteMem(drams, to);
+}
+
+void NoC::fromRemoteMem(const DataLayout& to, len_t fromC, len_t toC){
+	if(toC <= fromC) return;
+	if(DRAM_interleave){
+		_fromRemoteMem(dram_list, to, fromC, toC);
+		return;
+	}
+
+	// Do not interleave, find nearest DRAM.
+	pos_t d = nearest_dram_to(to);
+	if(!calc_bw){
+		tot_hops += _noc.tot_hops;
+		tot_DRAM_acc += _noc.tot_DRAM_acc;
+		return;
+	}
+	_fromRemoteMem({d}, to, fromC, toC);
+}
+
+void NoC::fromRemoteMem(const MemLayout& from, const DataLayout& to, len_t fromC, len_t toC){
+	if(toC <= fromC) return;
+	const auto& drams = from.get_layouts();
+	_fromRemoteMem(drams, to, fromC, toC);
+}
+
+void NoC::toRemoteMem(const UniqueLayout& from, MemLayout& to){
+	if(DRAM_interleave){
+		to.set_layout(dram_list);
+	}else{
+		pos_t d = nearest_dram(from);
+		to.set_layout({d});
+		if(!calc_bw){
+			tot_hops += _noc.tot_hops;
+			tot_DRAM_acc += _noc.tot_DRAM_acc;
+			return;
+		}
+	}
+
+	toRemoteMem_const(from, to);
+}
+
+void NoC::toRemoteMem_const(const UniqueLayout& from, const MemLayout& to){
+	for(cidx_t i=0; i<from.totLength(); ++i){
+		auto it = from[i];
 		vol_t curSize = it.range.size();
 		if(curSize <= 0) continue;
-		unicast_to_dram(it.tile, curSize);
+		unicast_to_dram(it.tile, curSize, to.get_layouts());
 	}
 }
 
-void NoC::betweenLayout(const UniqueLayout& fromLayout, const DataLayout& toLayout, len_t fromCOffset, len_t fromB, len_t toB){
+void NoC::betweenLayout(const UniqueLayout& from, const DataLayout& to, len_t fromCOffset, len_t fromB, len_t toB){
 	hop_t h = 0;
 	// TODO: change to generic UniqueLayout
-	const auto* fLayout = dynamic_cast<const StdULayout*>(&fromLayout);
+	const auto* fLayout = dynamic_cast<const StdULayout*>(&from);
 	if(fLayout == nullptr){
 		// TODO: add general case.
 		assert(false);
 		return;
 	}
 	bool diffB = (fromB != toB);
-	auto rLen = toLayout.rangeLength();
+	auto rLen = to.rangeLength();
 	for(cidx_t i=0; i<rLen; ++i){
-		auto toEntry = toLayout.at(i);
+		auto toEntry = to.at(i);
 		fmap_range toRange = toEntry.range;
 		if(toRange.c.to <= fromCOffset) continue;
 		toRange.c -= fromCOffset;
@@ -229,11 +291,11 @@ NoC::hop_t NoC::multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t siz
 	return h * size;
 }
 
-void NoC::unicast_dram(pos_t dst, vol_t size){
-	size_t llen = dram_list.size();
+void NoC::unicast_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams){
+	size_t llen = drams.size();
 	size_t i = 0;
 	vol_t from_size = 0;
-	for(const pos_t& dram: dram_list){
+	for(const pos_t& dram: drams){
 		vol_t to_size = (size * ++i) / llen;
 		unicast(dram, dst, to_size - from_size);
 		from_size = to_size;
@@ -241,11 +303,11 @@ void NoC::unicast_dram(pos_t dst, vol_t size){
 	tot_DRAM_acc += size;
 }
 
-void NoC::unicast_to_dram(pos_t dst, vol_t size){
-	size_t llen = dram_list.size();
+void NoC::unicast_to_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams){
+	size_t llen = drams.size();
 	size_t i = 0;
 	vol_t from_size = 0;
-	for(const pos_t& dram: dram_list){
+	for(const pos_t& dram: drams){
 		vol_t to_size = (size * ++i) / llen;
 		unicast(dst, dram, to_size - from_size);
 		from_size = to_size;
@@ -253,11 +315,11 @@ void NoC::unicast_to_dram(pos_t dst, vol_t size){
 	tot_DRAM_acc += size;
 }
 
-void NoC::multicast_dram(const pos_t* dst, cidx_t len, vol_t size){
-	size_t llen = dram_list.size();
+void NoC::multicast_dram(const pos_t* dst, cidx_t len, vol_t size, const std::vector<pos_t>& drams){
+	size_t llen = drams.size();
 	size_t i = 0;
 	vol_t from_size = 0;
-	for(const pos_t& dram: dram_list){
+	for(const pos_t& dram: drams){
 		vol_t to_size = (size * ++i) / llen;
 		multicast(dram, dst, len, to_size - from_size);
 		from_size = to_size;
@@ -337,6 +399,57 @@ vol_t NoC::calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t 
 	ints.b.from=0;
 	ints.b.to=tot_b;
 	return ints.size();
+}
+
+pos_t NoC::nearest_dram(const UniqueLayout& layout){
+	bool first = true;
+	hop_t minHops = 0;
+	pos_t d;
+	for(const auto& dram : dram_list){
+		_noc.clear();
+		for(cidx_t i=0; i<layout.totLength(); ++i){
+			auto it = layout[i];
+			vol_t curSize = it.range.size();
+			if(curSize <= 0) continue;
+			_noc.unicast(it.tile, dram, curSize);
+			_noc.tot_DRAM_acc += curSize;
+		}
+		if(first || _noc.tot_hops < minHops){
+			first = false;
+			minHops = _noc.tot_hops;
+			d = dram;
+		}
+	}
+	_noc.tot_hops = minHops;
+	return d;
+}
+
+pos_t NoC::nearest_dram_to(const DataLayout& layout){
+	bool first = true;
+	hop_t minHops = 0;
+	pos_t d;
+	auto rLen = layout.rangeLength();
+	for(const auto& dram : dram_list){
+		_noc.clear();
+		for(cidx_t i=0; i<rLen; ++i){
+			auto it = layout.at(i);
+			vol_t curSize = it.range.size();
+			if(curSize <= 0) continue;
+			if(it.numTile == 1){
+				_noc.unicast(dram, it.tiles[0], curSize);
+			}else{
+				_noc.multicast(dram, it.tiles, it.numTile, curSize);
+			}
+			_noc.tot_DRAM_acc += curSize;
+		}
+		if(first || _noc.tot_hops < minHops){
+			first = false;
+			minHops = _noc.tot_hops;
+			d = dram;
+		}
+	}
+	_noc.tot_hops = minHops;
+	return d;
 }
 
 std::ostream& operator<<(std::ostream& os, const NoC& noc){

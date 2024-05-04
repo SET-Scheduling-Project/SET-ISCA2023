@@ -127,6 +127,8 @@ int main(int argc, char** argv){
 	// Set NoC properties:
 	// Only use unicast in NoC
 	NoC::unicast_only = true;
+	// Data in DRAM interleaves (use all DRAM equally to store data)
+	NoC::DRAM_interleave = false;
 
 	StdLayerEngine engine(cMapper);
 	SchNode::layerMapper = &engine;

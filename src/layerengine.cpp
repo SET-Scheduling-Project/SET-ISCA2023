@@ -116,7 +116,7 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 			placeSch.initPlacement(cluster);
 			static_cast<StdDataLayout&>(placeSch.getIfmL()).setCPosArr();
 			static_cast<StdDataLayout&>(placeSch.getWgtL()).setCPosArr();
-			calcNoC(noc, placeSch, curNode);
+			calcNoC(noc, placeSch, layerSch.oMemLayout, curNode);
 			SchNode::SchCost curCostAll = curCost;
 			curCostAll.energy += noc.get_cost();
 			cycle_t nocTime = noc.get_time();
@@ -126,6 +126,7 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 				layerSch.extUbufEnergy = ubufTotal;
 				layerSch.tileSch = tileSch;
 				layerSch.place.update(std::move(placeSch));
+				// layerSch.oMemLayout = oMemLayout;
 			}
 		// TODO: add cur_cost.cost back.
 		}while(placeIter.nextPlace(/*cur_cost.cost()*/));
@@ -140,7 +141,7 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 		static_cast<StdDataLayout&>(layerSch.place.getIfmL()).setCPosArr();
 		static_cast<StdDataLayout&>(layerSch.place.getWgtL()).setCPosArr();
 		layerSch.place.finalize();
-		calcNoC(layerSch.noc, layerSch.place, curNode);
+		calcNoC(layerSch.noc, layerSch.place, layerSch.oMemLayout, curNode);
 	}
 	return layerSch;
 }
@@ -234,7 +235,7 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 	delete[] arrs[3];
 }
 
-void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) const{
+void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, MemLayout& oMemLayout, LNode* curNode) const{
 	noc.clear();
 	const Node& layerT = curNode->layert;
 	len_t B = curNode->num_batch;
@@ -249,13 +250,13 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 		FOR_BITSET(it, prevs){
 			lid_t prev = it;
 			len_t prevC = network->getNode(prev).layer().ofmap_shape().c;
+			LNode* fromNode = (*(curNode->lnodeList))[prev];
 			if(curNode->get_dirp_set().contains(prev)){
-				LNode* fromNode = (*(curNode->lnodeList))[prev];
 				const auto& fromLayout = fromNode->get_place_sch().getOfmL();
 				noc.betweenLayout(fromLayout, place.getWgtL(), curC, fromNode->num_batch, B);
 			}else{
-				// TODO: Change to last layer's memLayout.
-				noc.fromRemoteMem(place.getWgtL(), curC, curC + prevC);
+				const auto& memLayout = fromNode->get_memLayout();
+				noc.fromRemoteMem(memLayout, place.getWgtL(), curC, curC + prevC);
 			}
 			curC += prevC;
 		}
@@ -289,13 +290,13 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 	FOR_BITSET(it, prevs){
 		lid_t prev = it;
 		len_t prevC = network->getNode(prev).layer().ofmap_shape().c;
+		LNode* fromNode = (*(curNode->lnodeList))[prev];
 		if(curNode->get_dirp_set().contains(prev)){
-			LNode* fromNode = (*(curNode->lnodeList))[prev];
 			const auto& fromLayout = fromNode->get_place_sch().getOfmL();
 			noc.betweenLayout(fromLayout, place.getIfmL(), curC, fromNode->num_batch, B);
 		}else{
-			// TODO: Change to last layer's memLayout.
-			noc.fromRemoteMem(place.getIfmL(), curC, curC + prevC);
+			const auto& memLayout = fromNode->get_memLayout();
+			noc.fromRemoteMem(memLayout, place.getIfmL(), curC, curC + prevC);
 		}
 		curC += prevC;
 		if(elt_K > 0){
@@ -313,7 +314,9 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 
 	// Save to remote mem if necessary
 	if(curNode->to_dram){
-		noc.toRemoteMem(place.getOfmL());
+		noc.toRemoteMem(place.getOfmL(), oMemLayout);
+	}else{
+		oMemLayout.clear();
 	}
 }
 

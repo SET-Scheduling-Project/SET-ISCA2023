@@ -9,7 +9,9 @@
 
 class DataLayout;
 class UniqueLayout;
+class MemLayout;
 //#include "datalayout.h"
+//#include "memlayout.h"
 
 
 class NoC{
@@ -18,7 +20,8 @@ public:
 	static energy_t hop_cost, DRAM_acc_cost;
 	static bw_t DRAM_bw, NoC_bw;
 	static std::vector<pos_t> dram_list;
-	static bool unicast_only;
+	static bool unicast_only, DRAM_interleave;
+	static thread_local NoC _noc;
 private:
 	class HopCount{
 		// TODO: change size_t to appropriate size
@@ -50,6 +53,11 @@ private:
 	HopCount link_hops;
 
 	static vol_t calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t bat1, len_t bat2);
+	static pos_t nearest_dram(const UniqueLayout& layout);
+	static pos_t nearest_dram_to(const DataLayout& layout);
+
+	void _fromRemoteMem(const std::vector<pos_t>& from, const DataLayout& to);
+	void _fromRemoteMem(const std::vector<pos_t>& from, const DataLayout& to, len_t fromC, len_t toC);
 public:
 	NoC(bool _calc_bw = true);
 	NoC(const NoC& other) = default;
@@ -69,10 +77,13 @@ public:
 	//void set_calc_bw(bool _calc_bw);
 	void clear();
 
-	void fromRemoteMem(const DataLayout& toLayout);
-	void fromRemoteMem(const DataLayout& toLayout, len_t fromC, len_t toC);
-	void toRemoteMem(const UniqueLayout& fromLayout);
-	void betweenLayout(const UniqueLayout& fromLayout, const DataLayout& toLayout, len_t fromCOffset, len_t fromB, len_t toB);
+	void fromRemoteMem(const DataLayout& to);
+	void fromRemoteMem(const MemLayout& from, const DataLayout& to);
+	void fromRemoteMem(const DataLayout& to, len_t fromC, len_t toC);
+	void fromRemoteMem(const MemLayout& from, const DataLayout& to, len_t fromC, len_t toC);
+	void toRemoteMem(const UniqueLayout& from, MemLayout& to);
+	void toRemoteMem_const(const UniqueLayout& from, const MemLayout& to);
+	void betweenLayout(const UniqueLayout& from, const DataLayout& to, len_t fromCOffset, len_t fromB, len_t toB);
 
 	hop_t get_tot_hops() const;
 	access_t get_tot_DRAM_acc() const;
@@ -86,9 +97,9 @@ public:
 	void multicast(pos_t src, const pos_t* dst, cidx_t len, vol_t size);
 	hop_t multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t size);
 	// DRAM is at (-1,x) and (n,x)
-	void unicast_dram(pos_t dst, vol_t size);
-	void unicast_to_dram(pos_t dst, vol_t size);
-	void multicast_dram(const pos_t* dst, cidx_t len, vol_t size);
+	void unicast_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams);
+	void unicast_to_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams);
+	void multicast_dram(const pos_t* dst, cidx_t len, vol_t size, const std::vector<pos_t>& drams);
 
 
 	friend std::ostream& operator<<(std::ostream& os, const NoC& noc);

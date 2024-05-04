@@ -2,6 +2,7 @@
 #define LAYERENGINE_H
 
 #include "coremapping.h"
+#include "memlayout.h"
 #include "noc.h"
 #include "placement.h"
 #include "schnode.h"
@@ -15,6 +16,7 @@ struct LayerScheme{
 	energy_t extUbufEnergy;
 	CoreMapper::CoreMapping tileSch;
 	PlaceSch place;
+	MemLayout oMemLayout;
 	NoC noc;
 	bool isValid() const;
 };
@@ -33,7 +35,7 @@ public:
 	virtual vol_t get_ubuf_size() const override;
 	virtual LayerScheme search(LNode* curNode) const override;
 	void initLayouts(PlaceSch& place, const Node& layerT, const fmap_shape& ofmShape, len_t B) const;
-	void calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) const;
+	void calcNoC(NoC& noc, const PlaceSch& place, MemLayout& oMemLayout, LNode* curNode) const;
 };
 
 #endif // LAYERENGINE_H

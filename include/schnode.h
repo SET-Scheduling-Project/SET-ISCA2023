@@ -14,6 +14,7 @@
 #include "cluster.h"
 #include "coremapping.h"
 #include "ltreenode.h"
+#include "memlayout.h"
 #include "noc.h"
 #include "placement.h"
 #include "util.h"
@@ -156,6 +157,7 @@ private:
 	const Bitset dirp_set;
 	const bool to_dram;
 	CoreMapper::CoreMapping tileSch;
+	MemLayout memLayout;
 
 	bool search();
 
@@ -174,6 +176,7 @@ public:
 	const Bitset& get_dirp_set() const;
 	bool get_to_dram() const;
 	const CoreMapper::CoreMapping& get_tileSch() const;
+	const MemLayout& get_memLayout() const;
 
 	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const override;
 	virtual void print_tree(std::string pad = "", std::ostream& os = std::cout) const override;
