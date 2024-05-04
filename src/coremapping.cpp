@@ -55,6 +55,14 @@ void CoreMapper::set_lr_utime(LRLayer& l) const{
 	l.set_utime(t);
 }
 
+void CoreMapper::set_part(int _num_part){
+	num_part = _num_part;
+}
+
+len_t CoreMapper::K_hint() const {
+	return 1;
+}
+
 // Codes for PolarMapper
 
 PolarMapper::PolarMapper(const PolarCore& _core)
@@ -97,6 +105,10 @@ vol_t PolarMapper::get_ubuf_size() const{
 	return core.ul3.Size;
 }
 
+len_t PolarMapper::K_hint() const {
+	return core.pes.laneNum;
+}
+
 // Codes for EyerissMapper
 
 EyerissMapper::EyerissMapper(const EyerissCore& _core)
@@ -121,6 +133,31 @@ CoreMapper::CoreMapping CoreMapper::genLayerMap(const Layer& layer, const PartSc
 		wl.K = DIVCEIL(wl.K, part.K);
 		wl.H = DIVCEIL(wl.H, part.H);
 		wl.W = DIVCEIL(wl.W, part.W);
+
+		long long npart = num_part;
+		vol_t ofm_size = wl.K * wl.H * wl.W * batch_size;
+		if(num_part < 0){
+			vol_t unit_size = -num_part;
+			npart = DIVCEIL(ofm_size, unit_size);
+		}
+
+		auto min_K = K_hint();
+		auto max_Kcut = wl.K / min_K;
+		if(max_Kcut == 0) ++max_Kcut;
+		len_t min_cuts = DIVCEIL(npart, max_Kcut);
+		if(min_cuts > ofm_size / wl.K) min_cuts = ofm_size / wl.K;
+
+		PartSch tile_part;
+		cidx_t _npart = npart;
+		if(_npart != npart) assert(false); // Consider using larger factor type.
+		auto iter = partEngine.init(_npart, batch_size, wl.K, wl.H, wl.W, tile_part, min_cuts);
+		assert(iter);
+		assert(!(iter.nextPart()));
+
+		wl.H = DIVCEIL(wl.H, tile_part.H);
+		wl.W = DIVCEIL(wl.W, tile_part.W);
+		wl.B = DIVCEIL(wl.B, tile_part.B);
+		wl.K = DIVCEIL(wl.K, tile_part.K);
 		if(REF_IS_INSTANCE(layer, GroupConvLayer)){
 			const GroupConvLayer& gcl=static_cast<const GroupConvLayer&>(cl);
 			const auto& gclWl = gcl.get_workload();
@@ -133,8 +170,13 @@ CoreMapper::CoreMapping CoreMapper::genLayerMap(const Layer& layer, const PartSc
 			wl.nGroup *= wl.B;
 			wl.B = 1;
 		}
+
 		wl.calc_op();
-		return genMapping(wl);
+
+		auto m = genMapping(wl);
+		m *= npart;
+		m.tile_part = tile_part;
+		return m;
 	}else if(REF_IS_INSTANCE(layer, LRLayer)){
 		assert(!wgtB);
 		// LR Layer...
@@ -148,8 +190,22 @@ CoreMapper::CoreMapping CoreMapper::genLayerMap(const Layer& layer, const PartSc
 		access_t tot_op = wl.calc_op(batch_size);
 
 		CoreMapping m;
+
+		long long npart = num_part;
+		if(num_part < 0){
+			vol_t ofm_size = wl.K * wl.H * wl.W * batch_size;
+			vol_t unit_size = -num_part;
+			npart = DIVCEIL(ofm_size, unit_size);
+		}
+
+		cidx_t _npart = npart;
+		if(_npart != npart) assert(false); // Consider using larger factor type.
+		auto iter = partEngine.init(_npart, batch_size, wl.K, wl.H, wl.W, m.tile_part);
+		assert(iter);
+		assert(!(iter.nextPart()));
+
 		m.cost.energy = tot_op * base_core.LR_mac_cost;
-		m.cost.time = DIVCEIL(tot_op,base_core.LR_mac_num);
+		m.cost.time = DIVCEIL(tot_op, base_core.LR_mac_num);
 		m.buffer = m.noc = m.ubuf = 0;
 		m.mac = m.cost.energy;
 		m.util = tot_op;
@@ -682,7 +738,7 @@ void PolarInst::getCost(const ConvWl& wl){
 	printf("%llu\n",ul3_wtime);*/
 	MapCost cost(tot_energy, tot_time);
 	if(cost.cost() < best_map.cost.cost()){
-		best_map = {cost, ubuf_energy, buf_energy, noc_energy, mac_energy, util, tot_util};
+		best_map = {cost, PartSch(), ubuf_energy, buf_energy, noc_energy, mac_energy, util, tot_util};
 	}
 	return;
 }
@@ -944,7 +1000,7 @@ void EyerissInst::getCost(const CoreMapper::ConvWl& wl) {
 	// std::cout << "cost.time = " << cost.time << "ul2_ar.energy" << ul2_ar/cost.energy << "tot_util=" << tot_util << "\n";
 	if(cost.cost() < best_map.cost.cost()){
 		// Use current map instead.
-		best_map = {cost, ubuf_energy, buf_energy, noc_energy, mac_energy, util, tot_util};
+		best_map = {cost, PartSch(), ubuf_energy, buf_energy, noc_energy, mac_energy, util, tot_util};
 	}
 }
 

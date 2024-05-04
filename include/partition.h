@@ -4,6 +4,8 @@
 #include <vector>
 #include "util.h"
 
+#define MAX_BUF MAX_CHIPS
+
 class Node;
 //#include "network.h"
 
@@ -29,8 +31,8 @@ class PartEngine{
 		factor_t x,y;
 	};
 
-	static fvec factors[MAX_CHIPS+1];
-	static double utils[MAX_CHIPS+1][MAX_CHIPS+1];
+	static fvec factors[MAX_BUF+1];
+	static double utils[MAX_BUF+1][MAX_BUF+1];
 	double min_util;
 
 	static std::vector<num_pair> factor_num(factor_t n);
@@ -39,6 +41,7 @@ public:
 	PartEngine(double _min_util=0.75);
 
 	PartIter init(cidx_t cluster_size, len_t batch_num, const Node& layer, PartSch& sch, len_t min_cuts);
+	PartIter init(cidx_t part_size, len_t B, len_t K, len_t H, len_t W, PartSch& sch, len_t min_cuts = 0);
 }extern partEngine;
 
 class PartIter{
