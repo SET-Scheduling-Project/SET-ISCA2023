@@ -8,13 +8,7 @@
 
 class DataLayout;
 class UniqueLayout;
-struct PlaceSch;
-class LNode;
-class BufferUsage;
 //#include "datalayout.h"
-//#include "placement.h"
-//#include "schnode.h"
-//#include "bufferusage.h"
 
 class NoC{
 public:
@@ -22,6 +16,7 @@ public:
 	static energy_t hop_cost, DRAM_acc_cost;
 	static bw_t DRAM_bw, NoC_bw;
 	static std::vector<pos_t> dram_list;
+	static bool unicast_only;
 private:
 	class HopCount{
 		// TODO: change size_t to appropriate size
@@ -49,7 +44,7 @@ private:
 	// Direction: ESWN = 0123
 	HopCount link_hops;
 
-	vol_t calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t bat1, len_t bat2);
+	static vol_t calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t bat1, len_t bat2);
 public:
 	NoC(bool _calc_bw = true);
 	NoC(const NoC& other) = default;

@@ -1,10 +1,10 @@
 #ifndef LAYERENGINE_H
 #define LAYERENGINE_H
 
+#include "coremapping.h"
+#include "noc.h"
+#include "placement.h"
 #include "schnode.h"
-
-class CoreMapper;
-//#include "coremapping.h"
 
 struct LayerScheme{
 	// Total cost.

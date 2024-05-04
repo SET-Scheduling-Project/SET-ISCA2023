@@ -19,13 +19,13 @@
 // TODO: Temp. Remove later.
 typedef Network::lid_t lid_t;
 
+class LNode;
 class Cut;
 class LayerEngine;
 
 namespace Json{
 	class Value;
 };
-
 
 class SchNode{
 public:

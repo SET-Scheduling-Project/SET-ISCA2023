@@ -124,6 +124,10 @@ int main(int argc, char** argv){
 	//  2. the part size will overflow (>65536)
 	// cMapper->set_part(-10 KB);
 
+	// Set NoC properties:
+	// Only use unicast in NoC
+	NoC::unicast_only = true;
+
 	StdLayerEngine engine(cMapper);
 	SchNode::layerMapper = &engine;
 

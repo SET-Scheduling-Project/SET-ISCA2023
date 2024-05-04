@@ -1,6 +1,7 @@
 #ifndef UTIL_H
 #define UTIL_H
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -90,6 +91,12 @@ struct pos_t{
 	bool operator>=(const pos_t& other) const;
 	bool operator!=(const pos_t& other) const;
 	friend std::ostream& operator<<(std::ostream& os, const pos_t& pos);
+};
+
+struct pos_hash {
+	std::size_t operator()(const pos_t& pos) const {
+		return std::hash<pos_t::pos_hash_t>{}(*reinterpret_cast<const pos_t::pos_hash_t*>(&pos));
+	}
 };
 
 struct fmap_shape{
