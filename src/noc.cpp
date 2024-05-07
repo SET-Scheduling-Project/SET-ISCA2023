@@ -109,6 +109,33 @@ void NoC::fromRemoteMem(const MemLayout& from, const DataLayout& to, len_t fromC
 	_fromRemoteMem(drams, to, fromC, toC);
 }
 
+void NoC::fromRemoteMem_upd(const MemLayout& from_old,
+							const MemLayout& from_cur,
+							const DataLayout& to,
+							len_t fromC, len_t toC)
+{
+	if(toC <= fromC) return;
+	const auto& drams_old = from_old.get_layouts();
+	const auto& drams_cur = from_cur.get_layouts();
+	fmap_range::dim_range truncRange = {fromC, toC};
+
+	auto rLen = to.rangeLength();
+	for(cidx_t i=0; i<rLen; ++i){
+		auto it = to.at(i);
+		fmap_range range = it.range;
+		range.c = range.c.intersect(truncRange);
+		vol_t curSize = range.size();
+		if(curSize <= 0) continue;
+		if(it.numTile == 1){
+			unicast_dram(it.tiles[0], curSize, drams_old, false);
+			unicast_dram(it.tiles[0], curSize, drams_cur, true);
+		}else{
+			multicast_dram(it.tiles, it.numTile, curSize, drams_old, false);
+			multicast_dram(it.tiles, it.numTile, curSize, drams_cur, true);
+		}
+	}
+}
+
 void NoC::toRemoteMem(const UniqueLayout& from, MemLayout& to){
 	if(DRAM_interleave){
 		to.set_layout(dram_list);
@@ -180,6 +207,18 @@ NoC& NoC::operator+=(const NoC& other){
 	return *this;
 }
 
+NoC& NoC::operator-=(const NoC& other){
+	assert(tot_hops >= other.tot_hops);
+	tot_hops -= other.tot_hops;
+	assert(tot_DRAM_acc >= other.tot_DRAM_acc);
+	tot_DRAM_acc -= other.tot_DRAM_acc;
+	if(calc_bw || other.calc_bw){
+		assert(calc_bw && other.calc_bw);
+		link_hops -= other.link_hops;
+	}
+	return *this;
+}
+
 NoC NoC::operator*(const len_t& batch) const{
 	NoC x = *this;
 	return x *= batch;
@@ -225,8 +264,14 @@ cycle_t NoC::get_time() const{
 	return MAX(dram_time, noc_time);
 }
 
-void NoC::unicast(pos_t src, pos_t dst, vol_t size){
-	tot_hops += unicastCalc(src, dst, size);
+void NoC::unicast(pos_t src, pos_t dst, vol_t size, bool is_add){
+	if(is_add){
+		tot_hops += unicastCalc(src, dst, size);
+	}else{
+		auto hops = unicastCalc_sub(src, dst, size);
+		assert(tot_hops >= hops);
+		tot_hops -= hops;
+	}
 }
 
 NoC::hop_t NoC::unicastCalc(pos_t src, pos_t dst, vol_t size){
@@ -246,8 +291,35 @@ NoC::hop_t NoC::unicastCalc(pos_t src, pos_t dst, vol_t size){
 	return static_cast<hop_t>(abs(src.x-dst.x)+abs(src.y-dst.y)) * size;
 }
 
-void NoC::multicast(pos_t src, const pos_t* dst, cidx_t len, vol_t size){
-	tot_hops += multicastCalc(src, dst, len, size);
+NoC::hop_t NoC::unicastCalc_sub(pos_t src, pos_t dst, vol_t size){
+	link_hops.flat_factor();
+	if(calc_bw){
+		size_t x_dir = (dst.x > src.x)?0:2;
+		size_t y_dir = (dst.y > src.y)?3:1;
+		mlen_t dx = (dst.x > src.x)?1:-1;
+		mlen_t dy = (dst.y > src.y)?1:-1;
+		for(mlen_t x = src.x; x != dst.x; x+= dx){
+			auto& val = link_hops.get(x, src.y, x_dir);
+			assert(val >= size);
+			val -= size;
+		}
+		for(mlen_t y = src.y; y != dst.y; y+= dy){
+			auto& val = link_hops.get(dst.x, y, y_dir);
+			assert(val >= size);
+			val -= size;
+		}
+	}
+	return static_cast<hop_t>(abs(src.x-dst.x)+abs(src.y-dst.y)) * size;
+}
+
+void NoC::multicast(pos_t src, const pos_t* dst, cidx_t len, vol_t size, bool is_add){
+	if(is_add){
+		tot_hops += multicastCalc(src, dst, len, size);
+	}else{
+		auto hops = multicastCalc(src, dst, len, size);
+		assert(tot_hops >= hops);
+		tot_hops -= hops;
+	}
 }
 
 NoC::hop_t NoC::multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t size){
@@ -291,40 +363,105 @@ NoC::hop_t NoC::multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t siz
 	return h * size;
 }
 
-void NoC::unicast_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams){
-	size_t llen = drams.size();
-	size_t i = 0;
-	vol_t from_size = 0;
-	for(const pos_t& dram: drams){
-		vol_t to_size = (size * ++i) / llen;
-		unicast(dram, dst, to_size - from_size);
-		from_size = to_size;
+NoC::hop_t NoC::multicastCalc_sub(pos_t src, const pos_t* dst, cidx_t len, vol_t size){
+	if(unicast_only){
+		hop_t h = 0;
+		for(cidx_t i=0; i<len; ++i){
+			h += unicastCalc_sub(src, dst[i], size);
+		}
+		return h;
 	}
-	tot_DRAM_acc += size;
+	link_hops.flat_factor();
+
+	mlen_t cur_x = dst[0].x;
+	mlen_t min_y = dst[0].y;
+	hop_t h = 0;
+	if(calc_bw){
+		for(mlen_t x = src.x; x > dst[0].x; --x){
+			auto& val = link_hops.get(x, src.y, 2);
+			assert(val >= size);
+			val -= size;
+		}
+		for(mlen_t x = src.x; x < dst[len-1].x; ++x){
+			auto& val = link_hops.get(x, src.y, 0);
+			assert(val >= size);
+			val -= size;
+		}
+	}
+	h += MAX(src.x, dst[len-1].x) - MIN(src.x, dst[0].x);
+
+	for(cidx_t i=1; i<=len; ++i){
+		if(i<len && dst[i].x == cur_x) continue;
+		if(calc_bw){
+			for(mlen_t y = src.y; y > min_y; --y){
+				auto& val = link_hops.get(cur_x, y, 1);
+				assert(val >= size);
+				val -= size;
+
+			}
+			for(mlen_t y = src.y; y < dst[i-1].y; ++y){
+				auto& val = link_hops.get(cur_x, y, 3);
+				assert(val >= size);
+				val -= size;
+			}
+		}
+		h += MAX(src.y, dst[i-1].y) - MIN(src.y, min_y);
+		if(i == len) break;
+		cur_x = dst[i].x;
+		min_y = dst[i].y;
+	}
+	return h * size;
 }
 
-void NoC::unicast_to_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams){
+void NoC::unicast_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams, bool is_add){
 	size_t llen = drams.size();
 	size_t i = 0;
 	vol_t from_size = 0;
 	for(const pos_t& dram: drams){
 		vol_t to_size = (size * ++i) / llen;
-		unicast(dst, dram, to_size - from_size);
+		unicast(dram, dst, to_size - from_size, is_add);
 		from_size = to_size;
 	}
-	tot_DRAM_acc += size;
+	if(is_add){
+		tot_DRAM_acc += size;
+	}else{
+		assert(tot_DRAM_acc >= size);
+		tot_DRAM_acc -= size;
+	}
 }
 
-void NoC::multicast_dram(const pos_t* dst, cidx_t len, vol_t size, const std::vector<pos_t>& drams){
+void NoC::unicast_to_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams, bool is_add){
 	size_t llen = drams.size();
 	size_t i = 0;
 	vol_t from_size = 0;
 	for(const pos_t& dram: drams){
 		vol_t to_size = (size * ++i) / llen;
-		multicast(dram, dst, len, to_size - from_size);
+		unicast(dst, dram, to_size - from_size, is_add);
 		from_size = to_size;
 	}
-	tot_DRAM_acc += size;
+	if(is_add){
+		tot_DRAM_acc += size;
+	}else{
+		assert(tot_DRAM_acc >= size);
+		tot_DRAM_acc -= size;
+	}
+}
+
+void NoC::multicast_dram(const pos_t* dst, cidx_t len, vol_t size, const std::vector<pos_t>& drams, bool is_add){
+	size_t llen = drams.size();
+	size_t i = 0;
+	vol_t from_size = 0;
+	for(const pos_t& dram: drams){
+		vol_t to_size = (size * ++i) / llen;
+		multicast(dram, dst, len, to_size - from_size, is_add);
+		from_size = to_size;
+	}
+	if(is_add){
+		tot_DRAM_acc += size;
+	}else{
+		assert(tot_DRAM_acc >= size);
+		tot_DRAM_acc -= size;
+	}
 }
 
 std::vector<NoC::link_info> NoC::get_link_info() const{
@@ -462,6 +599,17 @@ NoC::HopCount& NoC::HopCount::operator+=(const HopCount& other){
 	flat_factor();
 	for(const auto& it : other.link_hops){
 		link_hops[it.first] += it.second * other.factor;
+	}
+	return *this;
+}
+
+NoC::HopCount& NoC::HopCount::operator-=(const HopCount& other){
+	flat_factor();
+	for(const auto& it : other.link_hops){
+		auto& val = link_hops[it.first];
+		auto val2 = it.second * other.factor;
+		assert(val >= val2);
+		val -= val2;
 	}
 	return *this;
 }

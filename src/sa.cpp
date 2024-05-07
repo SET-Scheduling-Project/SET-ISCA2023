@@ -545,7 +545,7 @@ void SAEngine::SA_search(WholeSch& w_sch, const Cluster& c, lid_t max_depth, int
 		}else{
 			new_res = cur_res->copy();
 			assert(new_tree->isModified());
-			new_res->searchInc(new_tree);
+			new_res->inplace_search(new_tree);
 		}
 		if(!new_res->is_valid()){
 			delete new_tree;

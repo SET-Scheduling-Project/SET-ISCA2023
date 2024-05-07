@@ -44,6 +44,13 @@ void SchNode::setParent(Cut* newParent){
 	}
 }
 
+void SchNode::inplace_search(LTreeNode* node){
+	searchInc(node);
+	if(!valid) return;
+	NoC tmp;
+	updateNoc(tmp);
+}
+
 bool SchNode::is_valid() const{
 	return valid;
 }
@@ -125,8 +132,10 @@ bool LNode::search(){
 	ubuf_energy = res.extUbufEnergy;
 	place_sch = std::move(res.place);
 	tileSch = res.tileSch;
-	memLayout = res.oMemLayout;
+	iMemLayouts = std::move(res.iMemLayouts);
+	oMemLayout = std::move(res.oMemLayout);
 	cost = res.totCost;
+	comp_time = cost.time;
 	return true;
 }
 
@@ -186,6 +195,17 @@ void LNode::searchInc(LTreeNode* node){
 	return;
 }
 
+bool LNode::updateNoc(NoC& old_noc){
+	if(!layerMapper->updateNoC(this, old_noc)) return false;
+
+	bool is_seg = (parent == nullptr) || parent->is_DRAM_cut();
+	if(is_seg){
+		cycle_t noc_time = noc.get_time();
+		cost.time = MAX(comp_time, noc_time);
+	}
+	return true;
+}
+
 SchNode* LNode::copy(Cut* newParent) const{
 	LNode* node = new LNode(*this);
 	node->setParent(newParent);
@@ -217,8 +237,12 @@ const CoreMapper::CoreMapping& LNode::get_tileSch() const {
 	return tileSch;
 }
 
-const MemLayout& LNode::get_memLayout() const {
-	return memLayout;
+const std::vector<MemLayout>& LNode::get_iMemLayouts() const {
+	return iMemLayouts;
+}
+
+const MemLayout& LNode::get_oMemLayout() const {
+	return oMemLayout;
 }
 
 void LNode::print_struct(std::string pad, std::ostream& os) const{
@@ -315,6 +339,59 @@ void Cut::searchInc(LTreeNode* node){
 		oldChildren.pop_front();
 	}
 	curNode = nullptr;
+}
+
+bool Cut::updateNoc(NoC& old_noc){
+	std::vector<lid_t> updated_index;
+	std::vector<NoC> old_nocs;
+	lid_t child_idx = 0;
+	for(auto child: children){
+		if(child->updateNoc(old_noc)){
+			updated_index.push_back(child_idx);
+			old_nocs.push_back(std::move(old_noc));
+		}
+		++child_idx;
+	}
+
+	if(updated_index.empty())
+		return false;
+
+	bool is_top = is_DRAM_cut();
+	bool is_seg = (!is_top) && (parent == nullptr || parent->is_DRAM_cut());
+	bool is_top_seg = is_top || is_seg;
+
+	if(3 * updated_index.size() >= children.size()){
+		// More than 1/3 is changed, just re-add.
+		old_noc = std::move(noc);
+		noc.clear();
+		for(auto child: children){
+			noc += child->get_noc();
+		}
+		noc *= num_bgrp;
+	}else{
+		// Less than 1/3 is changed, just modify on original.
+		old_noc = noc;
+		noc /= num_bgrp;
+		for(lid_t i = 0; i<updated_index.size(); ++i){
+			auto cur_idx = updated_index[i];
+			noc -= old_nocs[i];
+			noc += children[cur_idx]->get_noc();
+		}
+		noc *= num_bgrp;
+	}
+
+	if(is_top_seg){
+		cost.time = 0;
+		for(auto child: children){
+			cost.time += child->get_cost().time;
+		}
+		cost.time *= num_bgrp;
+	}
+	if(is_seg){
+		cycle_t noc_time = noc.get_time();
+		cost.time = MAX(cost.time, noc_time);
+	}
+	return true;
 }
 
 bool Cut::contains(lid_t layerid) const{

@@ -30,6 +30,7 @@ private:
 	public:
 		HopCount();
 		HopCount& operator+=(const HopCount& other);
+		HopCount& operator-=(const HopCount& other);
 		HopCount& operator*=(const len_t& batch);
 		HopCount& operator/=(const len_t& batch);
 		void div(len_t batch);
@@ -67,6 +68,7 @@ public:
 
 	NoC operator+(const NoC& other) const;
 	NoC& operator+=(const NoC& other);
+	NoC& operator-=(const NoC& other);
 	NoC operator*(const len_t& batch) const;
 	NoC& operator*=(const len_t& batch);
 	NoC& operator/=(const len_t& batch);
@@ -81,6 +83,7 @@ public:
 	void fromRemoteMem(const MemLayout& from, const DataLayout& to);
 	void fromRemoteMem(const DataLayout& to, len_t fromC, len_t toC);
 	void fromRemoteMem(const MemLayout& from, const DataLayout& to, len_t fromC, len_t toC);
+	void fromRemoteMem_upd(const MemLayout& from_old, const MemLayout& from_cur, const DataLayout& to, len_t fromC, len_t toC);
 	void toRemoteMem(const UniqueLayout& from, MemLayout& to);
 	void toRemoteMem_const(const UniqueLayout& from, const MemLayout& to);
 	void betweenLayout(const UniqueLayout& from, const DataLayout& to, len_t fromCOffset, len_t fromB, len_t toB);
@@ -91,15 +94,17 @@ public:
 	energy_t get_cost() const;
 	cycle_t get_time() const;
 
-	void unicast(pos_t src, pos_t dst, vol_t size);
+	void unicast(pos_t src, pos_t dst, vol_t size, bool is_add = true);
 	hop_t unicastCalc(pos_t src, pos_t dst, vol_t size);
+	hop_t unicastCalc_sub(pos_t src, pos_t dst, vol_t size);
 	// TODO: dst needs to be in inc. order.
-	void multicast(pos_t src, const pos_t* dst, cidx_t len, vol_t size);
+	void multicast(pos_t src, const pos_t* dst, cidx_t len, vol_t size, bool is_add = true);
 	hop_t multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t size);
+	hop_t multicastCalc_sub(pos_t src, const pos_t* dst, cidx_t len, vol_t size);
 	// DRAM is at (-1,x) and (n,x)
-	void unicast_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams);
-	void unicast_to_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams);
-	void multicast_dram(const pos_t* dst, cidx_t len, vol_t size, const std::vector<pos_t>& drams);
+	void unicast_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams, bool is_add = true);
+	void unicast_to_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams, bool is_add = true);
+	void multicast_dram(const pos_t* dst, cidx_t len, vol_t size, const std::vector<pos_t>& drams, bool is_add = true);
 
 
 	friend std::ostream& operator<<(std::ostream& os, const NoC& noc);

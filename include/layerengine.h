@@ -16,6 +16,7 @@ struct LayerScheme{
 	energy_t extUbufEnergy;
 	CoreMapper::CoreMapping tileSch;
 	PlaceSch place;
+	std::vector<MemLayout> iMemLayouts;
 	MemLayout oMemLayout;
 	NoC noc;
 	bool isValid() const;
@@ -26,6 +27,7 @@ public:
 	virtual LayerScheme search(LNode* curNode) const = 0;
 	// TODO: put it somewhere else.
 	virtual vol_t get_ubuf_size() const = 0;
+	virtual bool updateNoC(LNode* curNode, NoC& old_noc) const = 0;
 };
 
 class StdLayerEngine : public LayerEngine{
@@ -35,7 +37,8 @@ public:
 	virtual vol_t get_ubuf_size() const override;
 	virtual LayerScheme search(LNode* curNode) const override;
 	void initLayouts(PlaceSch& place, const Node& layerT, const fmap_shape& ofmShape, len_t B) const;
-	void calcNoC(NoC& noc, const PlaceSch& place, MemLayout& oMemLayout, LNode* curNode) const;
+	void calcNoC(NoC& noc, const PlaceSch& place, std::vector<MemLayout>& iMemLayouts, MemLayout& oMemLayout, LNode* curNode) const;
+	virtual bool updateNoC(LNode* curNode, NoC& old_noc) const override;
 };
 
 #endif // LAYERENGINE_H

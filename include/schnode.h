@@ -74,6 +74,7 @@ protected:
 	NoC noc;
 	BufferUsage buf_usage, ifm_usage, wgt_usage;
 	energy_t ubuf_energy, buf_energy, bus_energy, mac_energy;
+	cycle_t comp_time;
 	// lnodeList points to a list of all SchNodes on the tree.
 	// All SchNodes on the tree shares one lnodeList, managed by the root.
 	nodeList_t* const lnodeList;
@@ -93,6 +94,9 @@ public:
 
 	// The main search function.
 	virtual void searchInc(LTreeNode* node) =0;
+	virtual bool updateNoc(NoC& old_noc) =0;
+
+	void inplace_search(LTreeNode* node);
 
 	// Copy and return a new SchNode from this.
 	virtual SchNode* copy(Cut* newParent = nullptr) const =0;
@@ -157,7 +161,8 @@ private:
 	const Bitset dirp_set;
 	const bool to_dram;
 	CoreMapper::CoreMapping tileSch;
-	MemLayout memLayout;
+	std::vector<MemLayout> iMemLayouts;
+	MemLayout oMemLayout;
 
 	bool search();
 
@@ -167,6 +172,7 @@ public:
 
 	void searchLayer();
 	virtual void searchInc(LTreeNode* node) override;
+	virtual bool updateNoc(NoC& old_noc) override;
 
 	virtual SchNode* copy(Cut* newParent = nullptr) const override;
 	virtual bool contains(lid_t _layerid) const override;
@@ -176,7 +182,8 @@ public:
 	const Bitset& get_dirp_set() const;
 	bool get_to_dram() const;
 	const CoreMapper::CoreMapping& get_tileSch() const;
-	const MemLayout& get_memLayout() const;
+	const std::vector<MemLayout>& get_iMemLayouts() const;
+	const MemLayout& get_oMemLayout() const;
 
 	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const override;
 	virtual void print_tree(std::string pad = "", std::ostream& os = std::cout) const override;
@@ -210,6 +217,7 @@ public:
 	void add(SchNode* child);
 
 	virtual void searchInc(LTreeNode* node) override;
+	virtual bool updateNoc(NoC& old_noc) override;
 
 	virtual SchNode* copy(Cut* newParent = nullptr) const override =0;
 	virtual bool contains(lid_t layerid) const override;
