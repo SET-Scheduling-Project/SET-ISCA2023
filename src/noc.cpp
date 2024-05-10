@@ -13,6 +13,7 @@ energy_t NoC::DRAM_acc_cost;
 bw_t NoC::DRAM_bw;
 bw_t NoC::NoC_bw;
 std::vector<pos_t> NoC::dram_list;
+bool NoC::unicast_only;
 
 NoC::NoC(bool _calc_bw): calc_bw(_calc_bw), tot_hops(0), tot_DRAM_acc(0){}
 
@@ -188,6 +189,13 @@ void NoC::multicast(pos_t src, const pos_t* dst, cidx_t len, vol_t size){
 }
 
 NoC::hop_t NoC::multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t size){
+	if(unicast_only){
+		hop_t h = 0;
+		for(cidx_t i=0; i<len; ++i){
+			h += unicastCalc(src, dst[i], size);
+		}
+		return h;
+	}
 	link_hops.flat_factor();
 
 	mlen_t cur_x = dst[0].x;

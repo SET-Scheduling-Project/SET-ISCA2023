@@ -18,6 +18,7 @@ public:
 	static energy_t hop_cost, DRAM_acc_cost;
 	static bw_t DRAM_bw, NoC_bw;
 	static std::vector<pos_t> dram_list;
+	static bool unicast_only;
 private:
 	class HopCount{
 		// TODO: change size_t to appropriate size
