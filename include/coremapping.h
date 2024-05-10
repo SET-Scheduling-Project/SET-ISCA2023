@@ -10,6 +10,7 @@
 class PartSch;
 //#include "partition.h"
 
+
 /* Example of for loop:
  *
  * // L3 level (swap these two loops if no L2)
@@ -200,6 +201,5 @@ public:
 	virtual vol_t get_ubuf_size() const override;
 	// virtual ~EyerissMapper() override = default;
 };
+
 #endif // COREMAPPING_H
-
-

@@ -7,15 +7,13 @@
 
 class BufferUsage;
 class StdLayerEngine;
-struct PartSch;
-struct PlaceSch;
+//struct PartSch;
 //#include "bufferusage.h"
 //#include "layerengine.h"
 //#include "partition.h"
-//#include "placement.h"
 
 
-typedef std::vector<fmap_range> fmap_list;
+// typedef std::vector<fmap_range> fmap_list;
 
 /*
  *  @brief A class that encodes a set of fmap_range that
@@ -44,17 +42,19 @@ public:
 	 * @brief The Entry class
 	 * Describes that "1/divN" of "range" is stored/needed by
 	 * the array "tiles" of length "numTile".
+	 *
+	 * Note: divN is not used (always equal to 1), thus commented out.
 	 */
 	struct Entry{
 		const fmap_range& range;
 		const pos_t* tiles;
 		dataLen_t numTile;
-		dataLen_t divN;
+		// dataLen_t divN;
 	};
 	struct UniqueEntry{
 		const fmap_range& range;
 		const pos_t& tile;
-		dataLen_t divN;
+		// dataLen_t divN;
 	};
 protected:
 	vol_t totVolume, maxVolume;
@@ -158,6 +158,7 @@ public:
 	IntersectIter get_intersect(const fmap_range& range, bool noBatch) const;
 	//~StdUDataLayout();
 };
+
 /*
 class MemULayout : public UniqueLayout{
 	friend StdLayerEngine;
@@ -173,57 +174,5 @@ public:
 	//~MemULayout();
 };
 */
-//class DataLayout: std::vector<std::pair<fmap_range, pos_t>>{
-/*
-private:
-	template<typename ptr>
-	class DLIterator{
-		using layout_ptr = std::conditional_t<std::is_const_v<ptr>, const DataLayout*, DataLayout*>;
-		const layout_ptr layout;
-		cidx_t it;
-		struct X{
-			int x;
-			int y;
-		};
-	public:
-		struct ChipInfo{
-			using range_ref = std::conditional_t<std::is_const_v<ptr>, const fmap_range&, fmap_range&>;
-			using pos_ref = std::conditional_t<std::is_const_v<ptr>, const pos_t&, pos_t&>;
-			range_ref range;
-			pos_ref pos;
-		};
-		DLIterator(layout_ptr _layout);
-		bool operator==(const DLIterator<ptr>& other) const;
-		bool operator!=(const DLIterator<ptr>& other) const;
-		DLIterator<ptr>& operator++();
-		ChipInfo operator*() const;
-	};
-public:
-	typedef DLIterator<DataLayout> iterator;
-	typedef DLIterator<const DataLayout> const_iterator;
-*/
-/*
-private:
-	fmap_range* range;
-	pos_t* pos;
-	cidx_t range_len, bcast_len, tot_len;
-public:
-	DataLayout();
-	DataLayout(cidx_t len, cidx_t bcast);
-	//virtual const_iterator begin() const;
-	//virtual const_iterator end() const;
-	~DataLayout();
-};
 
-class UniqueDataLayout{
-private:
-	typedef fmap_range::dim_range dim_r;
-	dim_r* r_list[4];
-	cidx_t r_len[4];
-	cidx_t r_step[4];
-public:
-	UniqueDataLayout();
-	UniqueDataLayout(const PartSch& part);
-};
-*/
 #endif // DATALAYOUT_H

@@ -1,13 +1,11 @@
 #include "schnode.h"
 
 #include <cassert>
-#include <iostream>
 
 #include "layerengine.h"
-#include "noc.h"
-#include "placement.h"
-#include "util.h"
+#include "network.h"
 #include "json/json.h"
+
 
 LayerEngine* SchNode::layerMapper=nullptr;
 len_t SchNode::tot_batch=0;
@@ -139,7 +137,8 @@ LNode::LNode(LTreeNode *_node, const Cluster& _c, SchNode::cut_ptr _parent)
 }
 
 LNode::~LNode(){
-	(*lnodeList)[layerid] = nullptr;
+	auto& ptr = (*lnodeList)[layerid];
+	if(ptr == this) ptr = nullptr;
 }
 
 void LNode::searchLayer(){
@@ -296,7 +295,7 @@ void Cut::searchInc(LTreeNode* node){
 	curNode = node;
 	oldChildren = std::move(children);
 	children.clear();
-	noc = NoC();
+	noc.clear();
 	ifm_usage = BufferUsage();
 	wgt_usage = BufferUsage();
 	buf_usage = BufferUsage();

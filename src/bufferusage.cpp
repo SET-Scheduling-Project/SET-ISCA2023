@@ -5,6 +5,7 @@
 #include "layerengine.h"
 #include "schnode.h"
 
+
 BufferUsage::BufferUsage()
 	:BufferUsage(SchNode::layerMapper->get_ubuf_size()){}
 

@@ -2,13 +2,12 @@
 #define LTREENODE_H
 
 #include <vector>
+
 #include "bitset.h"
-#include "network.h"
 #include "util.h"
 
-typedef Network::lid_t lid_t;
-
 class SAEngine;
+//#include "sa.h"
 
 
 class LTreeNode{

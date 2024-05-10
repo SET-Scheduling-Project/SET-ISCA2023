@@ -1,6 +1,7 @@
 #ifndef NOC_H
 #define NOC_H
 
+#include <iostream>
 #include <vector>
 #include <unordered_map>
 
@@ -8,13 +9,8 @@
 
 class DataLayout;
 class UniqueLayout;
-struct PlaceSch;
-class LNode;
-class BufferUsage;
 //#include "datalayout.h"
-//#include "placement.h"
-//#include "schnode.h"
-//#include "bufferusage.h"
+
 
 class NoC{
 public:
@@ -32,9 +28,12 @@ private:
 		HopCount& operator+=(const HopCount& other);
 		HopCount& operator*=(const len_t& batch);
 		HopCount& operator/=(const len_t& batch);
+		void div(len_t batch);
 		hop_t& get(mlen_t x, mlen_t y, mlen_t dir);
 		void clear();
 		hop_t max() const;
+
+		void flat_factor();
 
 		friend class NoC;
 	};
@@ -49,7 +48,7 @@ private:
 	// Direction: ESWN = 0123
 	HopCount link_hops;
 
-	vol_t calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t bat1, len_t bat2);
+	static vol_t calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t bat1, len_t bat2);
 public:
 	NoC(bool _calc_bw = true);
 	NoC(const NoC& other) = default;
@@ -64,8 +63,10 @@ public:
 	NoC& operator/=(const len_t& batch);
 	~NoC() = default;
 
+	void div(len_t batch);
+
 	//void set_calc_bw(bool _calc_bw);
-	void reset();
+	void clear();
 
 	void fromRemoteMem(const DataLayout& toLayout);
 	void fromRemoteMem(const DataLayout& toLayout, len_t fromC, len_t toC);

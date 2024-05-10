@@ -3,8 +3,9 @@
 #include <algorithm>
 #include <cassert>
 #include <cstring>
+
 #include "cluster.h"
-#include "network.h"
+
 
 PlaceEngine placeEngine;
 /*

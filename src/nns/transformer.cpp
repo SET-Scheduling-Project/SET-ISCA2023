@@ -1,14 +1,15 @@
 ﻿#include "nns/nns.h"
 
+
 typedef TransposeLayer::dim Ldims;
 
-static Network::lid_t add_attention(
+static lid_t add_attention(
 		Network& n, const std::string& name,
 		len_t len, len_t numG, len_t gSize,
-		Network::lid_t prevQ, Network::lid_t prevK, Network::lid_t prevV){
+		lid_t prevQ, lid_t prevK, lid_t prevV){
 
 
-	Network::lid_t Q, K, V, QK, QK_elt, QKV;
+	lid_t Q, K, V, QK, QK_elt, QKV;
 	Network::layer_set Ks;
 	Q = n.add(NLAYER(name + "_Q", Conv, H=len, W=1, C=numG*gSize), {prevQ});
 	for(len_t i=0; i<numG; ++i){
@@ -24,11 +25,11 @@ static Network::lid_t add_attention(
 	return n.add(NLAYER(name + "_FC", Conv, H=len, W=1, C=numG*gSize), {QKV});
 }
 
-static Network::lid_t add_encoder(
+static lid_t add_encoder(
 		Network& n, const std::string& name,
 		len_t len, len_t numG, len_t gSize, len_t ff_len,
-		Network::lid_t prev){
-	Network::lid_t next_prev;
+		lid_t prev){
+	lid_t next_prev;
 	next_prev = add_attention(n, name, len, numG, gSize, prev, prev, prev);
 	prev = n.add(NLAYER(name + "_elt1", Eltwise, K=numG*gSize, H=len, W=1, N=2), {prev, next_prev});
 	n.add(NLAYER(name + "_feedfwd1", Conv, C=numG*gSize, K=ff_len, H=len, W=1));
@@ -36,11 +37,11 @@ static Network::lid_t add_encoder(
 	return n.add(NLAYER(name + "_elt2", Eltwise, K=numG*gSize, H=len, W=1, N=2), {prev, next_prev});
 }
 
-static Network::lid_t add_decoder(
+static lid_t add_decoder(
 		Network& n, const std::string& name,
 		len_t len, len_t numG, len_t gSize, len_t ff_len,
-		Network::lid_t prev, Network::lid_t enc_prev){
-	Network::lid_t next_prev;
+		lid_t prev, lid_t enc_prev){
+	lid_t next_prev;
 	next_prev = add_attention(n, name+"_1", len, numG, gSize, prev, prev, prev);
 	prev = n.add(NLAYER(name + "_elt1", Eltwise, K=numG*gSize, H=len, W=1, N=2), {prev, next_prev});
 	next_prev = add_attention(n, name+"_2", len, numG, gSize, prev, enc_prev, enc_prev);
@@ -51,7 +52,7 @@ static Network::lid_t add_decoder(
 }
 
 const Network transformer = []{
-	Network::lid_t enc_prev, dec_prev;
+	lid_t enc_prev, dec_prev;
 	Network::layer_set prevs;
 	Network n;
 	len_t numG = 8;
@@ -78,7 +79,7 @@ const Network transformer = []{
 }();
 
 const Network transformer_cell = []{
-	Network::lid_t enc_prev, dec_prev;
+	lid_t enc_prev, dec_prev;
 	Network::layer_set prevs;
 	Network n;
 	len_t numG = 8;

@@ -7,7 +7,7 @@ static Network::layer_set add_inception(
 		len_t nfmaps_3, len_t nfmaps_5r, len_t nfmaps_5, len_t nfmaps_pool,
 		const Network::layer_set& prevs){
 
-	Network::lid_t a,b,c,d;
+	lid_t a,b,c,d;
 	//Add an inception module to the network.
 	std::string pfx = "inception_" + incp_id + "_";
 	// 1x1 branch.
@@ -27,7 +27,7 @@ static Network::layer_set add_inception(
 
 
 const Network googlenet = []{
-	Network::lid_t prev;
+	lid_t prev;
 	Network::layer_set prevs;
 	Network n;
 	InputData input("input", fmap_shape(3,224));

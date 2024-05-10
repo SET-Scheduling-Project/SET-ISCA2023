@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cstring>
-#include "schnode.h"
+
+#include "cluster.h"
+#include "datalayout.h"
 #include "util.h"
+
 
 energy_t NoC::hop_cost;
 energy_t NoC::DRAM_acc_cost;
@@ -21,7 +23,7 @@ void NoC::set_calc_bw(bool _calc_bw){
 }
 */
 
-void NoC::reset(){
+void NoC::clear(){
 	tot_hops = 0;
 	tot_DRAM_acc = 0;
 	link_hops.clear();
@@ -134,6 +136,12 @@ NoC& NoC::operator/=(const len_t& batch){
 	return *this;
 }
 
+void NoC::div(len_t batch){
+	tot_hops /= batch;
+	tot_DRAM_acc /= batch;
+	if(calc_bw) link_hops.div(batch);
+}
+
 NoC::hop_t NoC::get_tot_hops() const{
 	return tot_hops;
 }
@@ -159,6 +167,7 @@ void NoC::unicast(pos_t src, pos_t dst, vol_t size){
 }
 
 NoC::hop_t NoC::unicastCalc(pos_t src, pos_t dst, vol_t size){
+	link_hops.flat_factor();
 	if(calc_bw){
 		size_t x_dir = (dst.x > src.x)?0:2;
 		size_t y_dir = (dst.y > src.y)?3:1;
@@ -179,6 +188,8 @@ void NoC::multicast(pos_t src, const pos_t* dst, cidx_t len, vol_t size){
 }
 
 NoC::hop_t NoC::multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t size){
+	link_hops.flat_factor();
+
 	mlen_t cur_x = dst[0].x;
 	mlen_t min_y = dst[0].y;
 	hop_t h = 0;
@@ -327,11 +338,7 @@ std::ostream& operator<<(std::ostream& os, const NoC& noc){
 NoC::HopCount::HopCount():factor(1){}
 
 NoC::HopCount& NoC::HopCount::operator+=(const HopCount& other){
-	if(factor > 1){
-		for(const auto& it: link_hops){
-			link_hops[it.first] *= factor;
-		}
-	}
+	flat_factor();
 	for(const auto& it : other.link_hops){
 		link_hops[it.first] += it.second * other.factor;
 	}
@@ -346,22 +353,49 @@ NoC::HopCount& NoC::HopCount::operator*=(const len_t& batch){
 NoC::HopCount& NoC::HopCount::operator/=(const len_t& batch){
 	if(factor % batch == 0){
 		factor /= batch;
+	}else if(factor == 1){
+		for(const auto& it: link_hops){
+			assert(it.second % batch == 0);
+			link_hops[it.first] = it.second / batch;
+		}
 	}else{
 		for(const auto& it: link_hops){
-			link_hops[it.first] = (it.second * factor) / batch;
+			auto val = it.second * factor;
+			assert(val % batch == 0);
+			link_hops[it.first] = val / batch;
 		}
 		factor = 1;
 	}
 	return *this;
 }
 
+void NoC::HopCount::div(len_t batch){
+	if(factor % batch == 0){
+		factor /= batch;
+	}else if(factor == 1){
+		for(const auto& it: link_hops){
+			// assert(it.second % batch == 0);
+			link_hops[it.first] = it.second / batch;
+		}
+	}else{
+		for(const auto& it: link_hops){
+			auto val = it.second * factor;
+			// assert(val % batch == 0);
+			link_hops[it.first] = val / batch;
+		}
+		factor = 1;
+	}
+}
+
 NoC::hop_t& NoC::HopCount::get(mlen_t x, mlen_t y, mlen_t dir){
+	assert(factor == 1);
 	size_t idx = (x * Cluster::ylen + y) * 4 + dir;
 	assert(idx < 4u*Cluster::xlen*Cluster::ylen);
 	return link_hops[idx];
 }
 
 void NoC::HopCount::clear(){
+	factor = 1;
 	link_hops.clear();
 }
 
@@ -371,6 +405,15 @@ NoC::hop_t NoC::HopCount::max() const{
 		h = MAX(h, it.second);
 	}
 	return h * factor;
+}
+
+void NoC::HopCount::flat_factor(){
+	if(factor > 1){
+		for(const auto& it: link_hops){
+			link_hops[it.first] *= factor;
+		}
+		factor = 1;
+	}
 }
 
 bool NoC::link_info::operator<(const link_info& other) const{

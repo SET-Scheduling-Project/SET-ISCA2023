@@ -2,13 +2,12 @@
 
 #include <algorithm>
 #include <cassert>
-#include <cstdlib>
-#include <cstring>
 #include <memory>
 #include <stdexcept>
 #include <utility>
 
-mlen_t Cluster::xlen,Cluster::ylen,Cluster::stride;
+
+mlen_t Cluster::xlen, Cluster::ylen, Cluster::stride;
 double Cluster::min_util;
 
 Cluster::Cluster(cidx_t _first, cidx_t _last){

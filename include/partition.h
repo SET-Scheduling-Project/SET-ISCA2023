@@ -1,11 +1,14 @@
 #ifndef PARTITION_H
 #define PARTITION_H
 
+#include <iostream>
 #include <vector>
+
 #include "util.h"
 
 class Node;
 //#include "network.h"
+
 
 struct PartSch{
 	// TODO: change to cidx_t.
@@ -29,8 +32,9 @@ class PartEngine{
 		factor_t x,y;
 	};
 
-	static fvec factors[MAX_CHIPS+1];
-	static double utils[MAX_CHIPS+1][MAX_CHIPS+1];
+	static constexpr auto MAX_BUF = MAX_CHIPS;
+	static fvec factors[MAX_BUF+1];
+	static double utils[MAX_BUF+1][MAX_BUF+1];
 	double min_util;
 
 	static std::vector<num_pair> factor_num(factor_t n);

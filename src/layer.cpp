@@ -1,7 +1,7 @@
 #include "layer.h"
 
 #include <cassert>
-#include <cstring>
+
 
 Layer::Layer(const std::string& _name, const fmap_shape& _ifm_shape, const fmap_shape& _ofm_shape, const fmap_shape& _wgt_shape)
 	:name(_name), ifm_shape(_ifm_shape), ofm_shape(_ofm_shape), wgt_shape(_wgt_shape), bitwidth(8){}
@@ -337,8 +337,7 @@ TransposeLayer::Workload::Workload(){
 }
 
 void TransposeLayer::Workload::init(){
-	bool used[dim::NUM];
-	memset(used, 0, sizeof(bool)*dim::NUM);
+	bool used[dim::NUM] = {false};
 	for(int i=0; i<dim::NUM; ++i){
 		assert(!used[order[i]]);
 		used[order[i]] = true;

@@ -5,22 +5,17 @@
 #ifndef BUFFERUSAGE_H
 #define BUFFERUSAGE_H
 
-#include <cstddef>
-#include <functional>
+#include <iostream>
 #include <unordered_map>
 
 #include "util.h"
+
 
 // Records the usage of each buffer
 class BufferUsage{
 private:
 	// usage: records size of used buffer on each chip
 	// usage[chip] = used_buffer_size_on_this_chip
-	struct pos_hash {
-		std::size_t operator()(const pos_t& pos) const {
-			return std::hash<pos_t::pos_hash_t>{}(*reinterpret_cast<const pos_t::pos_hash_t*>(&pos));
-		}
-	};
 	std::unordered_map<pos_t, vol_t, pos_hash> usage;
 
 	// capacity: maximal volume of each buffer

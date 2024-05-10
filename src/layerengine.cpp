@@ -1,10 +1,9 @@
 #include "layerengine.h"
 
 #include <cassert>
-#include <cstring>
 
+#include "network.h"
 #include "partition.h"
-#include "placement.h"
 
 
 StdLayerEngine::StdLayerEngine(CoreMapper* _mapper):mapper(_mapper){}
@@ -236,7 +235,7 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 }
 
 void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) const{
-	noc.reset();
+	noc.clear();
 	const Node& layerT = curNode->layert;
 	len_t B = curNode->num_batch;
 	bool wgt_B = layerT.hasWgtPrevs();
@@ -263,7 +262,7 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 		assert(curC == layerT.layer().weight_shape().c);
 	}else{
 		noc.fromRemoteMem(place.getWgtL());
-		noc /= (LNode::tot_batch / B);
+		noc.div(LNode::tot_batch / B);
 	}
 
 	// Identify eltwise first

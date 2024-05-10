@@ -2,9 +2,10 @@
 #define LAYER_H
 
 #include <cstdint>
-//#include <iostream>
 #include <string>
+
 #include "util.h"
+
 
 /* With the macros below, one can define layers more conveniently.
  * Example:
@@ -12,7 +13,6 @@
  * defines a conv layer with a 3*3*64*128 kernel and 32*32*128 ofmap.
  * TYPE of a layer: Conv/FC/LR/Pooling/Eltwise
  */
-
 
 #ifndef NO_FAST_INIT_LAYER
 

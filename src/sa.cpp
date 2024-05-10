@@ -11,12 +11,15 @@
 #include <stdexcept>	// std::invalid_argument
 
 #include "bitset.h"		// Bitset
+#include "network.h"	// network
+#include "schnode.h"	// SchNode, LTreeNode
 
 /*
 #include <chrono>		// std::chrono
 #include <mutex>		// std::mutex, std::unique_lock
 #include <thread>		// std::thread, std::this_thread
 */
+
 
 WholeSch::WholeSch(): tree(nullptr), sch(nullptr){}
 

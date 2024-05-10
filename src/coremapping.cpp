@@ -1,9 +1,9 @@
 #include "coremapping.h"
 
 #include <cassert>
-#include <string>
+
 #include "partition.h"
-#include "util.h"
+
 
 #define HLEN(num_ol) (wl.H + (wl.R - wl.sH)*(num_ol))
 #define WLEN(num_ol) (wl.W + (wl.S - wl.sW)*(num_ol))

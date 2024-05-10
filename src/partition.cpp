@@ -2,10 +2,9 @@
 
 #include <cassert>
 #include <cmath>
-#include <iostream>
+
 #include "network.h"
 
-#define MAX_BUF MAX_CHIPS
 
 PartEngine::fvec PartEngine::factors[MAX_BUF+1];
 double PartEngine::utils[MAX_BUF+1][MAX_BUF+1];
@@ -116,7 +115,7 @@ PartIter::PartIter(PartSch& partSch, double _min_util)
 	:curSch(partSch), min_util(_min_util), finished(false){}
 
 double PartIter::calc_util(len_t real, len_t part){
-	if(real <= MAX_BUF) return PartEngine::utils[real][part];
+	if(real <= PartEngine::MAX_BUF) return PartEngine::utils[real][part];
 	return static_cast<double>(real)/(DIVCEIL(real, part) * part);
 }
 

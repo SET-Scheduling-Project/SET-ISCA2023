@@ -3,29 +3,32 @@
 
 #include <cstdint>
 #include <deque>
+#include <iostream>
 #include <map>
 #include <set>
 #include <vector>
+#include <unordered_map>
 
+#include "bitset.h"
 #include "bufferusage.h"
 #include "cluster.h"
 #include "coremapping.h"
 #include "ltreenode.h"
-#include "network.h"
 #include "noc.h"
 #include "placement.h"
 #include "util.h"
 
-// TODO: Temp. Remove later.
-typedef Network::lid_t lid_t;
-
-class Cut;
 class LayerEngine;
-
+class StdLayerEngine;
 namespace Json{
 	class Value;
 };
+//#include "layerengine.h"
+//#include "json/json.h"
 
+
+class LNode;
+class Cut;
 
 class SchNode{
 public:
