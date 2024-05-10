@@ -5,10 +5,8 @@
 #include <string>
 #include "core.h"
 #include "layer.h"
+#include "partition.h"
 #include "util.h"
-
-class PartSch;
-//#include "partition.h"
 
 
 /* Example of for loop:
@@ -79,6 +77,7 @@ public:
 	};
 	struct CoreMapping{
 		MapCost cost;
+		PartSch tile_part;
 		energy_t ubuf, buffer, noc, mac;
 		double util;
 		double tot_util;
@@ -87,6 +86,7 @@ public:
 	};
 	// Base core
 	const Core& base_core;
+	int num_part = 1;
 	CoreMapper(const Core& c);
 	CoreMapping genLayerMap(const Layer& layer, const PartSch& part, len_t batch_size, bool wgtB);
 	virtual CoreMapping genMapping(const ConvWl& wl) = 0;
@@ -96,6 +96,9 @@ public:
 	virtual void set_lr_utime(LRLayer& l) const;
 	virtual vol_t get_ubuf_size() const = 0;
 	virtual ~CoreMapper() = default;
+
+	void set_part(int _num_part);
+	virtual len_t K_hint() const;
 };
 
 class PolarMapper: public CoreMapper{
@@ -161,6 +164,7 @@ public:
 	virtual void set_conv_utime(ConvLayer& l) const override;
 	virtual vol_t get_ubuf_size() const override;
 	// virtual ~PolarMapper() override = default;
+	virtual len_t K_hint() const override;
 };
 
 class EyerissMapper : public CoreMapper {

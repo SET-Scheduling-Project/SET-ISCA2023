@@ -173,6 +173,7 @@ public:
 	const PlaceSch& get_place_sch() const;
 	const Bitset& get_dirp_set() const;
 	bool get_to_dram() const;
+	const CoreMapper::CoreMapping& get_tileSch() const;
 
 	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const override;
 	virtual void print_tree(std::string pad = "", std::ostream& os = std::cout) const override;

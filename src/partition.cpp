@@ -91,6 +91,26 @@ PartIter PartEngine::init(cidx_t cluster_size, len_t batch_num, const Node& laye
 	return it;
 }
 
+PartIter PartEngine::init(cidx_t part_size, len_t B, len_t K, len_t H, len_t W, PartSch& sch, len_t min_cuts){
+	if(part_size > MAX_BUF){
+		// TODO: add support for more cores.
+		assert(false);
+	}
+	// Just use the best scheme.
+	PartIter it(sch, 2);
+	it.min_ncut = min_cuts;
+	it.endPos = factors[part_size].end();
+	it.nextPos = factors[part_size].begin();
+	it.maxB = B;
+	it.maxK = K;
+	it.maxH = H;
+	it.maxW = W;
+	// assert(!it.nextPart());
+	it.nextPos = factors[part_size].begin();
+	it.finished = !it.getBestPart();
+	return it;
+}
+
 bool PartIter::calcUtil(const PartSch& nextSch) const{
 	if(nextSch.B * nextSch.H * nextSch.W < min_ncut) return false;
 	double util = calc_util(maxK, nextSch.K)\

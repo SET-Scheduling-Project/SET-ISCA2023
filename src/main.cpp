@@ -114,6 +114,16 @@ int main(int argc, char** argv){
 	}else{
 		cMapper = &mapper2;
 	}
+
+	// Part into 6 parts:
+	cMapper->set_part(6);
+
+	// Part into <=10KB parts:
+	// Note: do not use this !!!
+	//  1. will enconter large primes (e.g. 20071)
+	//  2. the part size will overflow (>65536)
+	// cMapper->set_part(-10 KB);
+
 	StdLayerEngine engine(cMapper);
 	SchNode::layerMapper = &engine;
 

@@ -43,6 +43,7 @@ public:
 	PartEngine(double _min_util=0.75);
 
 	PartIter init(cidx_t cluster_size, len_t batch_num, const Node& layer, PartSch& sch, len_t min_cuts);
+	PartIter init(cidx_t part_size, len_t B, len_t K, len_t H, len_t W, PartSch& sch, len_t min_cuts = 0);
 }extern partEngine;
 
 class PartIter{

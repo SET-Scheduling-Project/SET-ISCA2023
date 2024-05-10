@@ -212,6 +212,10 @@ bool LNode::get_to_dram() const{
 	return to_dram;
 }
 
+const CoreMapper::CoreMapping& LNode::get_tileSch() const {
+	return tileSch;
+}
+
 void LNode::print_struct(std::string pad, std::ostream& os) const{
 	os << pad << layert.name() << ' ' << num_batch << ' ' << place_sch;
 	os << " util:" << tileSch.util*100 << '/' << tileSch.tot_util*100;
@@ -221,6 +225,7 @@ void LNode::print_struct(std::string pad, std::ostream& os) const{
 	os << '/' << layert.layer().weight_size();
 	os << '/' << layert.layer().ofmap_shape().tot_size(num_batch);
 	os << " Max NoC: " << noc.get_max_link();
+	os << ' ' << tileSch.tile_part;
 	os << std::endl;
 }
 
