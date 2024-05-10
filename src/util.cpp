@@ -3,8 +3,6 @@
 #include <cassert>
 
 
-vol_t ofm_ubuf_vol;
-
 cost_t default_cost(energy_t energy, cycle_t time){
 	return energy * time;
 }

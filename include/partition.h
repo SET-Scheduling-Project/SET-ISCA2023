@@ -19,6 +19,7 @@ struct PartSch{
 	len_t& operator[](std::uint8_t i);
 	const len_t& operator[](std::uint8_t i) const;
 	vol_t size() const;
+	vol_t usize(const fmap_range& range) const;
 	friend std::ostream& operator<<(std::ostream& os, const PartSch& sch);
 };
 

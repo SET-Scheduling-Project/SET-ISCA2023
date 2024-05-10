@@ -209,6 +209,14 @@ vol_t PartSch::size() const{
 	return K*B*H*W;
 }
 
+vol_t PartSch::usize(const fmap_range& range) const {
+	auto totC = range.c.size();
+	auto totB = range.b.size();
+	auto totH = range.h.size();
+	auto totW = range.w.size();
+	return DIVCEIL(totC, K) * DIVCEIL(totB, B) * DIVCEIL(totH, H) * DIVCEIL(totW, W);
+}
+
 std::ostream& operator<<(std::ostream& os, const PartSch& sch){
 	return os << "(B=" << sch.B << ",K=" << sch.K << ",H=" << sch.H << ",W=" << sch.W << ')';
 }

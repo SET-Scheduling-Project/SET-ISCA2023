@@ -7,7 +7,7 @@
 
 class BufferUsage;
 class StdLayerEngine;
-//struct PartSch;
+struct PartSch;
 //#include "bufferusage.h"
 //#include "layerengine.h"
 //#include "partition.h"
@@ -95,6 +95,7 @@ public:
 	// virtual void init(const PartSch& sch) = 0;
 	Iterator begin() const;
 	Iterator end() const;
+	bool update_ofm(BufferUsage& usage, const PartSch& tile_part) const;
 	virtual UniqueLayout* clone() const override = 0;
 	virtual void finalize() override = 0;
 	virtual void reset() override = 0;

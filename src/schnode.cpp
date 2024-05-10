@@ -166,7 +166,7 @@ void LNode::searchLayer(){
 	}
 
 	buf_usage = ifm_usage;
-	if(!buf_usage.all_add(ofm_ubuf_vol)){
+	if(!place_sch.getOfmL().update_ofm(buf_usage, tileSch.tile_part)){
 		valid = false;
 		return;
 	}

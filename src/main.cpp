@@ -27,7 +27,6 @@ int main(int argc, char** argv){
 	std::srand(seed);
 	std::cout.precision(4);
 
-	ofm_ubuf_vol = 10 KB;
 	NoC::hop_cost=0.7 * 8;
 	NoC::DRAM_acc_cost=7.5 * 8;
 	// NoC::DRAM_bw=64;

@@ -90,7 +90,7 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 		initLayouts(placeSch, layerT, ofmShape, B);
 
 		// Estimate buffer usage
-		vol_t estimatedBuf = ofm_ubuf_vol;
+		vol_t estimatedBuf = mapper->buffer_size(placeSch.ofmLayout->maxRange());
 		estimatedBuf += placeSch.ifmLayout->maxRange();
 		estimatedBuf += placeSch.wgtLayout->maxRange();
 		if(estimatedBuf > ubuf.Size) continue;

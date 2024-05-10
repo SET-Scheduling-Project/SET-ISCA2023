@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "bufferusage.h"
+#include "partition.h"
 
 
 void DataLayout::update(const fmap_range& range){
@@ -57,6 +58,20 @@ UniqueLayout::Iterator UniqueLayout::begin() const{
 
 UniqueLayout::Iterator UniqueLayout::end() const{
 	return Iterator(*this, len);
+}
+
+bool UniqueLayout::update_ofm(BufferUsage& usage, const PartSch& tile_part) const {
+	dataLen_t totL = totLength();
+	// When partitioning into two parts, double buffer = full buffer.
+	bool no_part = (tile_part.size() <= 2);
+	for(dataLen_t i = 0; i < totL; ++i){
+		UniqueEntry ent = (*this)[i];
+		vol_t s = no_part ? ent.range.size() : (2 * tile_part.usize(ent.range));
+		if(s == 0) continue;
+		s *= multFactor;
+		if(!usage.add(ent.tile, s)) return false;
+	}
+	return true;
 }
 
 DataLayout::dataLen_t UniqueLayout::totLength() const{
