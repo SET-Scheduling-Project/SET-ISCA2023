@@ -71,6 +71,15 @@ bool pos_t::operator!=(const pos_t& other) const{
 	return x!=other.x || y!=other.y;
 }
 
+std::string pos_t::to_string() const {
+	std::string m = "(";
+	m += std::to_string(x);
+	m += ",";
+	m += std::to_string(y);
+	m += ")";
+	return m;
+}
+
 std::ostream& operator<<(std::ostream& os, const pos_t& pos){
 	return os << '(' << static_cast<int>(pos.x) << ',' << static_cast<int>(pos.y) << ')';
 }

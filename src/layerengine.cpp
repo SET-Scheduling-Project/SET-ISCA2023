@@ -116,17 +116,17 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 			placeSch.initPlacement(cluster);
 			static_cast<StdDataLayout&>(placeSch.getIfmL()).setCPosArr();
 			static_cast<StdDataLayout&>(placeSch.getWgtL()).setCPosArr();
-			calcNoC(noc, placeSch, layerSch.iMemLayouts, layerSch.oMemLayout, curNode);
+			calcNoC(noc, placeSch, layerSch.memLayouts, curNode);
 			SchNode::SchCost curCostAll = curCost;
 			curCostAll.energy += noc.get_cost();
 			cycle_t nocTime = noc.get_time();
 			curCostAll.time = MAX(curCostAll.time, nocTime);
 			if(curCostAll.cost() < layerSch.totCost.cost()){
 				layerSch.totCost = curCostAll;
+				layerSch.coreCost = curCost;
 				layerSch.extUbufEnergy = ubufTotal;
 				layerSch.tileSch = tileSch;
 				layerSch.place.update(std::move(placeSch));
-				// layerSch.oMemLayout = oMemLayout;
 			}
 		// TODO: add cur_cost.cost back.
 		}while(placeIter.nextPlace(/*cur_cost.cost()*/));
@@ -141,7 +141,7 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 		static_cast<StdDataLayout&>(layerSch.place.getIfmL()).setCPosArr();
 		static_cast<StdDataLayout&>(layerSch.place.getWgtL()).setCPosArr();
 		layerSch.place.finalize();
-		calcNoC(layerSch.noc, layerSch.place, layerSch.iMemLayouts, layerSch.oMemLayout, curNode);
+		calcNoC(layerSch.noc, layerSch.place, layerSch.memLayouts, curNode);
 	}
 	return layerSch;
 }
@@ -237,8 +237,7 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 
 void StdLayerEngine::calcNoC(NoC& noc,
 							 const PlaceSch& place,
-							 std::vector<MemLayout>& iMemLayouts,
-							 MemLayout& oMemLayout,
+							 MemLayouts& memLayouts,
 							 LNode* curNode) const
 {
 	noc.clear();
@@ -246,7 +245,8 @@ void StdLayerEngine::calcNoC(NoC& noc,
 	len_t B = curNode->num_batch;
 	bool wgt_B = layerT.hasWgtPrevs();
 	len_t curC;
-	iMemLayouts.clear();
+
+	memLayouts.iMemLayouts.clear();
 
 	// Fetch weight first.
 	if(wgt_B){
@@ -263,14 +263,15 @@ void StdLayerEngine::calcNoC(NoC& noc,
 			}else{
 				const auto& iMemLayout = fromNode->get_oMemLayout();
 				assert(!iMemLayout.empty());
-				iMemLayouts.push_back(iMemLayout);
-				noc.fromRemoteMem(iMemLayout, place.getWgtL(), curC, curC + prevC);
+				memLayouts.iMemLayouts.push_back(iMemLayout);
+				noc.fromRemoteMem_const(iMemLayout, place.getWgtL(), curC, curC + prevC);
 			}
 			curC += prevC;
 		}
 		assert(curC == layerT.layer().weight_shape().c);
+		memLayouts.wMemLayout.clear();
 	}else{
-		noc.fromRemoteMem(place.getWgtL());
+		noc.fromRemoteMem(memLayouts.wMemLayout, place.getWgtL());
 		noc.div(LNode::tot_batch / B);
 	}
 
@@ -282,7 +283,11 @@ void StdLayerEngine::calcNoC(NoC& noc,
 
 	// Fetch external data from remote MEM
 	curC = layerT.get_external_C();
-	noc.fromRemoteMem(place.getIfmL(), 0, curC);
+	if(curC > 0){
+		MemLayout layout;
+		noc.fromRemoteMem(layout, place.getIfmL(), 0, curC);
+		memLayouts.iMemLayouts.push_back(std::move(layout));
+	}
 	if(elt_K > 0){
 		if(curC == elt_K){
 			curC = 0;
@@ -305,8 +310,8 @@ void StdLayerEngine::calcNoC(NoC& noc,
 		}else{
 			const auto& iMemLayout = fromNode->get_oMemLayout();
 			assert(!iMemLayout.empty());
-			iMemLayouts.push_back(iMemLayout);
-			noc.fromRemoteMem(iMemLayout, place.getIfmL(), curC, curC + prevC);
+			memLayouts.iMemLayouts.push_back(iMemLayout);
+			noc.fromRemoteMem_const(iMemLayout, place.getIfmL(), curC, curC + prevC);
 		}
 		curC += prevC;
 		if(elt_K > 0){
@@ -324,16 +329,16 @@ void StdLayerEngine::calcNoC(NoC& noc,
 
 	// Save to remote mem if necessary
 	if(curNode->to_dram){
-		noc.toRemoteMem(place.getOfmL(), oMemLayout);
+		noc.toRemoteMem(place.getOfmL(), memLayouts.oMemLayout);
 	}else{
-		oMemLayout.clear();
+		memLayouts.oMemLayout.clear();
 	}
 }
 
 bool StdLayerEngine::updateNoC(LNode* curNode, NoC& old_noc) const {
 	auto& noc = curNode->noc;
 	const auto& place = curNode->place_sch;
-	auto& iMemLayouts = curNode->iMemLayouts;
+	auto& iMemLayouts = curNode->memLayouts.iMemLayouts;
 	auto mem_it  = iMemLayouts.begin();
 	auto mem_end = iMemLayouts.end();
 	const Node& layerT = curNode->layert;
@@ -382,6 +387,9 @@ bool StdLayerEngine::updateNoC(LNode* curNode, NoC& old_noc) const {
 
 	// Fetch external data from remote MEM
 	curC = layerT.get_external_C();
+	if(curC > 0){
+		++mem_it;
+	}
 	if(elt_K > 0){
 		if(curC == elt_K){
 			curC = 0;

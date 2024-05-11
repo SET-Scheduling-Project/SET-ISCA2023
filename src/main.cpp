@@ -123,12 +123,6 @@ int main(int argc, char** argv){
 	//  2. the part size will overflow (>65536)
 	// cMapper->set_part(-10 KB);
 
-	// Set NoC properties:
-	// Only use unicast in NoC
-	NoC::unicast_only = true;
-	// Data in DRAM interleaves (use all DRAM equally to store data)
-	NoC::DRAM_interleave = false;
-
 	StdLayerEngine engine(cMapper);
 	SchNode::layerMapper = &engine;
 
@@ -205,10 +199,37 @@ int main(int argc, char** argv){
 	network->set_utime(*cMapper);
 	Cluster c(0, Cluster::xlen * Cluster::ylen);
 
-	NoC::dram_list.resize(2*Cluster::ylen);
-	for(mlen_t y=0; y<Cluster::ylen; ++y){
-		NoC::dram_list[y] = {0, y};
-		NoC::dram_list[Cluster::ylen + y] = {static_cast<mlen_t>(Cluster::xlen-1), y};
+
+	// Set NoC properties:
+	// Only use unicast in NoC
+	NoC::unicast_only = true;
+	{
+		std::vector<std::vector<pos_t>> dram_lists(4);
+		assert(Cluster::ylen >= 2);
+		mlen_t h_len = Cluster::ylen / 2;
+		dram_lists[0].resize(h_len);
+		dram_lists[1].resize(h_len);
+		dram_lists[2].resize(h_len);
+		dram_lists[3].resize(h_len);
+		mlen_t x_max = Cluster::xlen-1;
+		mlen_t y_max = Cluster::ylen-1;
+		for(mlen_t y=0; y<h_len; ++y){
+			dram_lists[0][y] = {0, y};
+			dram_lists[1][y] = {0, static_cast<mlen_t>(y_max-y)};
+			dram_lists[2][y] = {x_max, y};
+			dram_lists[3][y] = {x_max, static_cast<mlen_t>(y_max-y)};
+		}
+		NoC::set_DRAMs(dram_lists);
+
+		// The way to set group interleaving (default is full-interleaving):
+		std::vector<std::vector<std::pair<didx_t, didx_t>>> port_groups(4);
+		for(mlen_t i=0; i<4; ++i){
+			port_groups[i].resize(h_len);
+			for(mlen_t j=0; j<h_len; ++j){
+				port_groups[i][j] = {i, j};
+			}
+		}
+		NoC::set_interleave(port_groups, 2);
 	}
 
 	switch (ff){

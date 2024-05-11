@@ -70,11 +70,10 @@ protected:
 	const len_t num_batch;
 	const Cluster cluster;
 	const Cut* const parent;
-	SchCost cost;
+	SchCost cost, core_cost;
 	NoC noc;
 	BufferUsage buf_usage, ifm_usage, wgt_usage;
 	energy_t ubuf_energy, buf_energy, bus_energy, mac_energy;
-	cycle_t comp_time;
 	// lnodeList points to a list of all SchNodes on the tree.
 	// All SchNodes on the tree shares one lnodeList, managed by the root.
 	nodeList_t* const lnodeList;
@@ -161,8 +160,7 @@ private:
 	const Bitset dirp_set;
 	const bool to_dram;
 	CoreMapper::CoreMapping tileSch;
-	std::vector<MemLayout> iMemLayouts;
-	MemLayout oMemLayout;
+	MemLayouts memLayouts;
 
 	bool search();
 
@@ -182,7 +180,9 @@ public:
 	const Bitset& get_dirp_set() const;
 	bool get_to_dram() const;
 	const CoreMapper::CoreMapping& get_tileSch() const;
+	const MemLayouts& get_MemLayouts() const;
 	const std::vector<MemLayout>& get_iMemLayouts() const;
+	const MemLayout& get_wMemLayout() const;
 	const MemLayout& get_oMemLayout() const;
 
 	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const override;
@@ -217,7 +217,7 @@ public:
 	void add(SchNode* child);
 
 	virtual void searchInc(LTreeNode* node) override;
-	virtual bool updateNoc(NoC& old_noc) override;
+	virtual bool updateNoc(NoC& old_noc) override =0;
 
 	virtual SchNode* copy(Cut* newParent = nullptr) const override =0;
 	virtual bool contains(lid_t layerid) const override;
@@ -241,6 +241,8 @@ public:
 	TCut(LTreeNode* _node, const Cluster& _c, cut_ptr _parent);
 	virtual ~TCut() override = default;
 
+	virtual bool updateNoc(NoC& old_noc) override;
+
 	virtual SchNode* copy(Cut* newParent = nullptr) const override;
 
 	// **************** Code for IR generation ****************
@@ -257,6 +259,8 @@ private:
 public:
 	SCut(LTreeNode* _node, const Cluster& _c, cut_ptr _parent);
 	virtual ~SCut() override = default;
+
+	virtual bool updateNoc(NoC& old_noc) override;
 
 	virtual SchNode* copy(Cut* newParent = nullptr) const override;
 

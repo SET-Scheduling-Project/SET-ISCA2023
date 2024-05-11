@@ -21,14 +21,14 @@ bool MemLayout::empty() const {
 	return layout.empty();
 }
 
-void MemLayout::set_layout(const std::vector<pos_t>& _layout){
+void MemLayout::set_layout(const std::vector<didx_t>& _layout){
 	layout = _layout;
 }
 
-void MemLayout::set_layout(std::vector<pos_t>&& _layout){
+void MemLayout::set_layout(std::vector<didx_t>&& _layout){
 	layout = _layout;
 }
 
-const std::vector<pos_t>& MemLayout::get_layouts() const{
+const std::vector<didx_t>& MemLayout::get_layouts() const{
 	return layout;
 }

@@ -2,6 +2,13 @@
 
 #include <algorithm>
 #include <cassert>
+#include <iostream>
+#include <map>
+#include <stdexcept>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "cluster.h"
 #include "datalayout.h"
@@ -13,12 +20,15 @@ energy_t NoC::hop_cost;
 energy_t NoC::DRAM_acc_cost;
 bw_t NoC::DRAM_bw;
 bw_t NoC::NoC_bw;
-std::vector<pos_t> NoC::dram_list;
-bool NoC::unicast_only;
-bool NoC::DRAM_interleave;
+bool NoC::unicast_only = false;
+bool NoC::full_interleave = true;
+didx_t NoC::DRAM_num = 0;
+didx_t NoC::il_group_num;
+std::vector<NoC::PortInfo> NoC::port_list;
+std::vector<didx_t> NoC::il_group_start;
 thread_local NoC NoC::_noc(false);
 
-NoC::NoC(bool _calc_bw): calc_bw(_calc_bw), tot_hops(0), tot_DRAM_acc(0){}
+NoC::NoC(bool _calc_bw): calc_bw(_calc_bw), tot_hops(0), DRAM_acc(DRAM_num){}
 
 /*
 void NoC::set_calc_bw(bool _calc_bw){
@@ -29,25 +39,25 @@ void NoC::set_calc_bw(bool _calc_bw){
 
 void NoC::clear(){
 	tot_hops = 0;
-	tot_DRAM_acc = 0;
+	DRAM_acc.resize(DRAM_num, 0);
 	link_hops.clear();
 }
 
-void NoC::_fromRemoteMem(const std::vector<pos_t>& from, const DataLayout& to){
+void NoC::_fromRemoteMem(const GroupVec& groups, const DataLayout& to){
 	auto rLen = to.rangeLength();
 	for(cidx_t i=0; i<rLen; ++i){
 		auto it = to.at(i);
 		vol_t curSize = it.range.size();
 		if(curSize <= 0) continue;
 		if(it.numTile == 1){
-			unicast_dram(it.tiles[0], curSize, from);
+			unicast_dram(it.tiles[0], curSize, groups);
 		}else{
-			multicast_dram(it.tiles, it.numTile, curSize, from);
+			multicast_dram(it.tiles, it.numTile, curSize, groups);
 		}
 	}
 }
 
-void NoC::_fromRemoteMem(const std::vector<pos_t>& from, const DataLayout& to, len_t fromC, len_t toC){
+void NoC::_fromRemoteMem(const GroupVec& groups, const DataLayout& to, len_t fromC, len_t toC){
 	fmap_range::dim_range truncRange = {fromC, toC};
 
 	auto rLen = to.rangeLength();
@@ -58,55 +68,101 @@ void NoC::_fromRemoteMem(const std::vector<pos_t>& from, const DataLayout& to, l
 		vol_t curSize = range.size();
 		if(curSize <= 0) continue;
 		if(it.numTile == 1){
-			unicast_dram(it.tiles[0], curSize, from);
+			unicast_dram(it.tiles[0], curSize, groups);
 		}else{
-			multicast_dram(it.tiles, it.numTile, curSize, from);
+			multicast_dram(it.tiles, it.numTile, curSize, groups);
 		}
 	}
 }
 
-void NoC::fromRemoteMem(const DataLayout& to){
-	if(DRAM_interleave){
-		_fromRemoteMem(dram_list, to);
-		return;
+void NoC::_fromRemoteMem(didx_t group, const DataLayout& to){
+	auto rLen = to.rangeLength();
+	for(cidx_t i=0; i<rLen; ++i){
+		auto it = to.at(i);
+		vol_t curSize = it.range.size();
+		if(curSize <= 0) continue;
+		if(it.numTile == 1){
+			unicast_dram(it.tiles[0], curSize, group);
+		}else{
+			multicast_dram(it.tiles, it.numTile, curSize, group);
+		}
 	}
-
-	// Do not interleave, find nearest DRAM.
-	pos_t d = nearest_dram_to(to);
-	if(!calc_bw){
-		tot_hops += _noc.tot_hops;
-		tot_DRAM_acc += _noc.tot_DRAM_acc;
-		return;
-	}
-	_fromRemoteMem({d}, to);
 }
 
-void NoC::fromRemoteMem(const MemLayout& from, const DataLayout& to){
-	const auto& drams = from.get_layouts();
-	_fromRemoteMem(drams, to);
+void NoC::_fromRemoteMem(didx_t group, const DataLayout& to, len_t fromC, len_t toC){
+	fmap_range::dim_range truncRange = {fromC, toC};
+
+	auto rLen = to.rangeLength();
+	for(cidx_t i=0; i<rLen; ++i){
+		auto it = to.at(i);
+		fmap_range range = it.range;
+		range.c = range.c.intersect(truncRange);
+		vol_t curSize = range.size();
+		if(curSize <= 0) continue;
+		if(it.numTile == 1){
+			unicast_dram(it.tiles[0], curSize, group);
+		}else{
+			multicast_dram(it.tiles, it.numTile, curSize, group);
+		}
+	}
 }
 
-void NoC::fromRemoteMem(const DataLayout& to, len_t fromC, len_t toC){
+void NoC::_toRemoteMem(const UniqueLayout& from, const GroupVec& groups){
+	for(cidx_t i=0; i<from.totLength(); ++i){
+		auto it = from[i];
+		vol_t curSize = it.range.size();
+		if(curSize <= 0) continue;
+		unicast_to_dram(it.tile, curSize, groups);
+	}
+}
+
+void NoC::_toRemoteMem(const UniqueLayout& from, didx_t group){
+	for(cidx_t i=0; i<from.totLength(); ++i){
+		auto it = from[i];
+		vol_t curSize = it.range.size();
+		if(curSize <= 0) continue;
+		unicast_to_dram(it.tile, curSize, group);
+	}
+}
+
+void NoC::fromRemoteMem(MemLayout& from, const DataLayout& to){
+	if(full_interleave){
+		from.set_layout({0});
+	}else{
+		// Do not interleave, find nearest DRAM.
+		nearest_groups_to(to, from);
+		if((!calc_bw) && il_group_num == 1){
+			tot_hops += _noc.tot_hops;
+			DRAM_acc += _noc.DRAM_acc;
+			return;
+		}
+	}
+	_fromRemoteMem(from.get_layouts(), to);
+}
+
+void NoC::fromRemoteMem_const(const MemLayout& from, const DataLayout& to){
+	_fromRemoteMem(from.get_layouts(), to);
+}
+
+void NoC::fromRemoteMem(MemLayout& from, const DataLayout& to, len_t fromC, len_t toC){
 	if(toC <= fromC) return;
-	if(DRAM_interleave){
-		_fromRemoteMem(dram_list, to, fromC, toC);
-		return;
+	if(full_interleave){
+		from.set_layout({0});
+	}else{
+		// Do not interleave, find nearest DRAM.
+		nearest_groups_to(to, from);
+		if((!calc_bw) && il_group_num == 1){
+			tot_hops += _noc.tot_hops;
+			DRAM_acc += _noc.DRAM_acc;
+			return;
+		}
 	}
-
-	// Do not interleave, find nearest DRAM.
-	pos_t d = nearest_dram_to(to);
-	if(!calc_bw){
-		tot_hops += _noc.tot_hops;
-		tot_DRAM_acc += _noc.tot_DRAM_acc;
-		return;
-	}
-	_fromRemoteMem({d}, to, fromC, toC);
+	_fromRemoteMem(from.get_layouts(), to, fromC, toC);
 }
 
-void NoC::fromRemoteMem(const MemLayout& from, const DataLayout& to, len_t fromC, len_t toC){
+void NoC::fromRemoteMem_const(const MemLayout& from, const DataLayout& to, len_t fromC, len_t toC){
 	if(toC <= fromC) return;
-	const auto& drams = from.get_layouts();
-	_fromRemoteMem(drams, to, fromC, toC);
+	_fromRemoteMem(from.get_layouts(), to, fromC, toC);
 }
 
 void NoC::fromRemoteMem_upd(const MemLayout& from_old,
@@ -137,28 +193,21 @@ void NoC::fromRemoteMem_upd(const MemLayout& from_old,
 }
 
 void NoC::toRemoteMem(const UniqueLayout& from, MemLayout& to){
-	if(DRAM_interleave){
-		to.set_layout(dram_list);
+	if(full_interleave){
+		to.set_layout({0});
 	}else{
-		pos_t d = nearest_dram(from);
-		to.set_layout({d});
-		if(!calc_bw){
+		nearest_groups(from, to);
+		if((!calc_bw) && il_group_num == 1){
 			tot_hops += _noc.tot_hops;
-			tot_DRAM_acc += _noc.tot_DRAM_acc;
+			DRAM_acc += _noc.DRAM_acc;
 			return;
 		}
 	}
-
-	toRemoteMem_const(from, to);
+	_toRemoteMem(from, to.get_layouts());
 }
 
 void NoC::toRemoteMem_const(const UniqueLayout& from, const MemLayout& to){
-	for(cidx_t i=0; i<from.totLength(); ++i){
-		auto it = from[i];
-		vol_t curSize = it.range.size();
-		if(curSize <= 0) continue;
-		unicast_to_dram(it.tile, curSize, to.get_layouts());
-	}
+	_toRemoteMem(from, to.get_layouts());
 }
 
 void NoC::betweenLayout(const UniqueLayout& from, const DataLayout& to, len_t fromCOffset, len_t fromB, len_t toB){
@@ -199,7 +248,7 @@ NoC NoC::operator+(const NoC& other) const{
 
 NoC& NoC::operator+=(const NoC& other){
 	tot_hops += other.tot_hops;
-	tot_DRAM_acc += other.tot_DRAM_acc;
+	DRAM_acc += other.DRAM_acc;
 	if(calc_bw || other.calc_bw){
 		assert(calc_bw && other.calc_bw);
 		link_hops += other.link_hops;
@@ -210,8 +259,8 @@ NoC& NoC::operator+=(const NoC& other){
 NoC& NoC::operator-=(const NoC& other){
 	assert(tot_hops >= other.tot_hops);
 	tot_hops -= other.tot_hops;
-	assert(tot_DRAM_acc >= other.tot_DRAM_acc);
-	tot_DRAM_acc -= other.tot_DRAM_acc;
+	assert((DRAM_acc >= other.DRAM_acc).min());
+	DRAM_acc -= other.DRAM_acc;
 	if(calc_bw || other.calc_bw){
 		assert(calc_bw && other.calc_bw);
 		link_hops -= other.link_hops;
@@ -226,22 +275,134 @@ NoC NoC::operator*(const len_t& batch) const{
 
 NoC& NoC::operator*=(const len_t& batch){
 	tot_hops *= batch;
-	tot_DRAM_acc *= batch;
+	DRAM_acc *= batch;
 	if(calc_bw) link_hops *= batch;
 	return *this;
 }
 
 NoC& NoC::operator/=(const len_t& batch){
 	tot_hops /= batch;
-	tot_DRAM_acc /= batch;
+	DRAM_acc /= batch;
 	if(calc_bw) link_hops /= batch;
 	return *this;
 }
 
 void NoC::div(len_t batch){
 	tot_hops /= batch;
-	tot_DRAM_acc /= batch;
+	DRAM_acc /= batch;
 	if(calc_bw) link_hops.div(batch);
+}
+
+void NoC::set_DRAMs(const std::vector<std::vector<pos_t>>& port_lists){
+	port_list.clear();
+
+	if(port_lists.empty()){
+		throw std::invalid_argument("No ports input in set_DRAMs()!");
+	}
+	didx_t DRAM_idx = 0;
+	for(const auto& cur_list : port_lists){
+		if(cur_list.empty()){
+			std::string msg = "DRAM ";
+			msg += std::to_string(DRAM_idx);
+			msg += " has no ports!";
+			throw std::invalid_argument(msg);
+		}
+		didx_t port_idx = 0;
+		for(const auto& pos : cur_list){
+			port_list.push_back({pos, DRAM_idx, port_idx});
+			++port_idx;
+		}
+		++DRAM_idx;
+	}
+
+	std::unordered_set<pos_t, pos_hash> s;
+	for(const auto& port_info : port_list){
+		const auto& port_pos = port_info.pos;
+		if(!s.insert(port_pos).second){
+			std::string msg = "Duplicate port ";
+			msg += port_pos.to_string();
+			msg += " in port_lists!";
+			throw std::invalid_argument(msg);
+		}
+	}
+
+	full_interleave = true;
+	DRAM_num = port_lists.size();
+}
+
+void NoC::set_interleave(const std::vector<std::vector<std::pair<didx_t, didx_t>>>& port_groups, didx_t ngroups){
+	if(ngroups > port_groups.size()){
+		std::string msg = "Not enough groups to choose! Need ";
+		msg += std::to_string(ngroups);
+		msg += " but has only ";
+		msg += std::to_string(port_groups.size());
+		throw std::invalid_argument(msg);
+	}
+	if(ngroups == 0){
+		throw std::invalid_argument("At least one group should be chosen.");
+	}
+
+	if(ngroups == port_groups.size()){
+		std::cout << "Warning: when all groups are used, it's the same as full interleaving." << std::endl;
+		std::cout << "Falling back to full inverleaving." << std::endl;
+		full_interleave = true;
+		return;
+	}
+
+	// Since no built-in hash available, for simplicity just use map here.
+	std::map<std::pair<didx_t, didx_t>, didx_t> port_idxs;
+	for(didx_t port_idx = 0; port_idx < port_list.size(); ++port_idx){
+		const auto& port = port_list[port_idx];
+		auto it = port_idxs.insert({{port.DRAM_idx, port.port_idx}, port_idx});
+		assert(it.second);
+	}
+
+	didx_t port_num = port_idxs.size();
+	std::vector<didx_t> idx_map(port_num, port_num);
+
+	il_group_start.clear();
+	il_group_start.reserve(port_groups.size()+1);
+	il_group_start.push_back(0);
+	didx_t cur_idx = 0;
+	for(const auto& port_group : port_groups){
+		for(const auto& port : port_group){
+			didx_t port_idx;
+			try {
+				port_idx = port_idxs.at(port);
+			} catch (std::out_of_range&) {
+				std::string msg = "Port (DRAM ";
+				msg += std::to_string(port.first);
+				msg += ", port ";
+				msg += std::to_string(port.second);
+				msg += ") not found!";
+				throw std::invalid_argument(msg);
+			}
+
+			auto& val = idx_map[port_idx];
+			if(val != port_num){
+				std::string msg = "Duplicate port (DRAM ";
+				msg += std::to_string(port.first);
+				msg += ", port ";
+				msg += std::to_string(port.second);
+				msg += ") in port_groups!";
+				throw std::invalid_argument(msg);
+			}
+			val = cur_idx++;
+		}
+		il_group_start.push_back(il_group_start.back() + port_group.size());
+	}
+
+	if(il_group_start.back() < port_num){
+		throw std::invalid_argument("All ports should belong to a port_group!");
+	}
+
+	auto _port_list = port_list;
+	for(didx_t port_idx = 0; port_idx < port_num; ++port_idx){
+		port_list[idx_map[port_idx]] = _port_list[port_idx];
+	}
+
+	full_interleave = false;
+	il_group_num = ngroups;
 }
 
 NoC::hop_t NoC::get_tot_hops() const{
@@ -254,14 +415,19 @@ energy_t NoC::get_hop_cost() const{
 
 energy_t NoC::get_cost() const{
 	//std::cout << "GC " << tot_hops << ' ' << tot_DRAM_acc << std::endl;
-	return tot_hops*hop_cost + tot_DRAM_acc*DRAM_acc_cost;
+	return tot_hops*hop_cost + get_tot_DRAM_acc()*DRAM_acc_cost;
 }
-// TODO: add NoC time.
+
 cycle_t NoC::get_time() const{
-	cycle_t dram_time = DIVCEIL(tot_DRAM_acc, (4*DRAM_bw));
+	cycle_t dram_time = get_dram_time();
 	if(!calc_bw) return dram_time;
 	cycle_t noc_time = DIVCEIL(link_hops.max(), NoC_bw);
 	return MAX(dram_time, noc_time);
+}
+
+cycle_t NoC::get_dram_time() const{
+	auto max_DRAM_acc = DRAM_acc.max();
+	return DIVCEIL(max_DRAM_acc, DRAM_bw);
 }
 
 void NoC::unicast(pos_t src, pos_t dst, vol_t size, bool is_add){
@@ -413,54 +579,189 @@ NoC::hop_t NoC::multicastCalc_sub(pos_t src, const pos_t* dst, cidx_t len, vol_t
 	return h * size;
 }
 
-void NoC::unicast_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams, bool is_add){
-	size_t llen = drams.size();
+void NoC::unicast_dram(pos_t dst, vol_t size, const GroupVec& groups, bool is_add){
+	if(full_interleave){
+		return unicast_dram(dst, size, 0, is_add);
+	}
+	if(groups.size() == 1){
+		return unicast_dram(dst, size, groups[0], is_add);
+	}
+	size_t tot_len = 0;
+	for(const auto& group_idx : groups){
+		tot_len += il_group_start[group_idx+1] - il_group_start[group_idx];
+	}
 	size_t i = 0;
 	vol_t from_size = 0;
-	for(const pos_t& dram: drams){
-		vol_t to_size = (size * ++i) / llen;
-		unicast(dram, dst, to_size - from_size, is_add);
-		from_size = to_size;
-	}
-	if(is_add){
-		tot_DRAM_acc += size;
-	}else{
-		assert(tot_DRAM_acc >= size);
-		tot_DRAM_acc -= size;
+	for(const auto& group_idx : groups){
+		for(didx_t port_idx = il_group_start[group_idx];
+			port_idx < il_group_start[group_idx+1];
+			++port_idx
+		){
+			vol_t to_size = (size * ++i) / tot_len;
+			vol_t cur_size = to_size - from_size;
+			const auto& dram = port_list[port_idx];
+			unicast(dram.pos, dst, cur_size, is_add);
+			auto& val = DRAM_acc[dram.DRAM_idx];
+			if(is_add){
+				val += cur_size;
+			}else{
+				assert(val >= cur_size);
+				val -= cur_size;
+			}
+			from_size = to_size;
+		}
 	}
 }
 
-void NoC::unicast_to_dram(pos_t dst, vol_t size, const std::vector<pos_t>& drams, bool is_add){
-	size_t llen = drams.size();
+void NoC::unicast_to_dram(pos_t dst, vol_t size, const GroupVec& groups, bool is_add){
+	if(full_interleave){
+		return unicast_to_dram(dst, size, 0, is_add);
+	}
+	if(groups.size() == 1){
+		return unicast_to_dram(dst, size, groups[0], is_add);
+	}
+	size_t tot_len = 0;
+	for(const auto& group_idx : groups){
+		tot_len += il_group_start[group_idx+1] - il_group_start[group_idx];
+	}
 	size_t i = 0;
 	vol_t from_size = 0;
-	for(const pos_t& dram: drams){
-		vol_t to_size = (size * ++i) / llen;
-		unicast(dst, dram, to_size - from_size, is_add);
-		from_size = to_size;
-	}
-	if(is_add){
-		tot_DRAM_acc += size;
-	}else{
-		assert(tot_DRAM_acc >= size);
-		tot_DRAM_acc -= size;
+	for(const auto& group_idx : groups){
+		for(didx_t port_idx = il_group_start[group_idx];
+			port_idx < il_group_start[group_idx+1];
+			++port_idx
+		){
+			vol_t to_size = (size * ++i) / tot_len;
+			vol_t cur_size = to_size - from_size;
+			const auto& dram = port_list[port_idx];
+			unicast(dst, dram.pos, cur_size, is_add);
+			auto& val = DRAM_acc[dram.DRAM_idx];
+			if(is_add){
+				val += cur_size;
+			}else{
+				assert(val >= cur_size);
+				val -= cur_size;
+			}
+			from_size = to_size;
+		}
 	}
 }
 
-void NoC::multicast_dram(const pos_t* dst, cidx_t len, vol_t size, const std::vector<pos_t>& drams, bool is_add){
-	size_t llen = drams.size();
+void NoC::multicast_dram(const pos_t* dst, cidx_t len, vol_t size, const GroupVec& groups, bool is_add){
+	if(full_interleave){
+		return multicast_dram(dst, len, size, 0, is_add);
+	}
+	if(groups.size() == 1){
+		return multicast_dram(dst, len, size, groups[0], is_add);
+	}
+	size_t tot_len = 0;
+	for(const auto& group_idx : groups){
+		tot_len += il_group_start[group_idx+1] - il_group_start[group_idx];
+	}
 	size_t i = 0;
 	vol_t from_size = 0;
-	for(const pos_t& dram: drams){
-		vol_t to_size = (size * ++i) / llen;
-		multicast(dram, dst, len, to_size - from_size, is_add);
+	for(const auto& group_idx : groups){
+		for(didx_t port_idx = il_group_start[group_idx];
+			port_idx < il_group_start[group_idx+1];
+			++port_idx
+		){
+			vol_t to_size = (size * ++i) / tot_len;
+			vol_t cur_size = to_size - from_size;
+			const auto& dram = port_list[port_idx];
+			multicast(dram.pos, dst, len, cur_size, is_add);
+			auto& val = DRAM_acc[dram.DRAM_idx];
+			if(is_add){
+				val += cur_size;
+			}else{
+				assert(val >= cur_size);
+				val -= cur_size;
+			}
+			from_size = to_size;
+		}
+	}
+}
+
+void NoC::unicast_dram(pos_t dst, vol_t size, didx_t group, bool is_add){
+	didx_t start, end;
+	if(full_interleave){
+		start = 0;
+		end = port_list.size();
+	}else{
+		start = il_group_start[group];
+		end = il_group_start[group+1];
+	}
+	size_t tot_len = end - start;
+	size_t i = 0;
+	vol_t from_size = 0;
+	for(didx_t port_idx = start; port_idx < end; ++port_idx){
+		vol_t to_size = (size * ++i) / tot_len;
+		vol_t cur_size = to_size - from_size;
+		const auto& dram = port_list[port_idx];
+		unicast(dram.pos, dst, cur_size, is_add);
+		auto& val = DRAM_acc[dram.DRAM_idx];
+		if(is_add){
+			val += cur_size;
+		}else{
+			assert(val >= cur_size);
+			val -= cur_size;
+		}
 		from_size = to_size;
 	}
-	if(is_add){
-		tot_DRAM_acc += size;
+}
+
+void NoC::unicast_to_dram(pos_t dst, vol_t size, didx_t group, bool is_add){
+	didx_t start, end;
+	if(full_interleave){
+		start = 0;
+		end = port_list.size();
 	}else{
-		assert(tot_DRAM_acc >= size);
-		tot_DRAM_acc -= size;
+		start = il_group_start[group];
+		end = il_group_start[group+1];
+	}
+	size_t tot_len = end - start;
+	size_t i = 0;
+	vol_t from_size = 0;
+	for(didx_t port_idx = start; port_idx < end; ++port_idx){
+		vol_t to_size = (size * ++i) / tot_len;
+		vol_t cur_size = to_size - from_size;
+		const auto& dram = port_list[port_idx];
+		unicast(dst, dram.pos, cur_size, is_add);
+		auto& val = DRAM_acc[dram.DRAM_idx];
+		if(is_add){
+			val += cur_size;
+		}else{
+			assert(val >= cur_size);
+			val -= cur_size;
+		}
+		from_size = to_size;
+	}
+}
+
+void NoC::multicast_dram(const pos_t* dst, cidx_t len, vol_t size, didx_t group, bool is_add){
+	didx_t start, end;
+	if(full_interleave){
+		start = 0;
+		end = port_list.size();
+	}else{
+		start = il_group_start[group];
+		end = il_group_start[group+1];
+	}
+	size_t tot_len = end - start;
+	size_t i = 0;
+	vol_t from_size = 0;
+	for(didx_t port_idx = start; port_idx < end; ++port_idx){
+		vol_t to_size = (size * ++i) / tot_len;
+		vol_t cur_size = to_size - from_size;
+		const auto& dram = port_list[port_idx];
+		multicast(dram.pos, dst, len, cur_size, is_add);
+		auto& val = DRAM_acc[dram.DRAM_idx];
+		if(is_add){
+			val += cur_size;
+		}else{
+			assert(val >= cur_size);
+			val -= cur_size;
+		}
+		from_size = to_size;
 	}
 }
 
@@ -504,7 +805,7 @@ NoC::hop_t NoC::get_max_link() const{
 }
 
 access_t NoC::get_tot_DRAM_acc() const{
-	return tot_DRAM_acc;
+	return DRAM_acc.sum();
 }
 
 vol_t NoC::calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t bat1, len_t bat2){
@@ -538,59 +839,121 @@ vol_t NoC::calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t 
 	return ints.size();
 }
 
-pos_t NoC::nearest_dram(const UniqueLayout& layout){
-	bool first = true;
-	hop_t minHops = 0;
-	pos_t d;
-	for(const auto& dram : dram_list){
+void NoC::nearest_groups(const UniqueLayout& layout, MemLayout& mem){
+	didx_t ngroup = il_group_start.size()-1;
+
+	if(il_group_num == 1){
 		_noc.clear();
-		for(cidx_t i=0; i<layout.totLength(); ++i){
-			auto it = layout[i];
-			vol_t curSize = it.range.size();
-			if(curSize <= 0) continue;
-			_noc.unicast(it.tile, dram, curSize);
-			_noc.tot_DRAM_acc += curSize;
+
+		bool first = true;
+		hop_t min_hops = 0;
+		auto DRAM_acc = _noc.DRAM_acc;
+		didx_t cur_group;
+
+		for(didx_t group_idx = 0; group_idx < ngroup; ++group_idx){
+			_noc._toRemoteMem(layout, group_idx);
+			if(first || _noc.tot_hops < min_hops){
+				first = false;
+				min_hops = _noc.tot_hops;
+				DRAM_acc = _noc.DRAM_acc;
+				cur_group = group_idx;
+			}
+			_noc.clear();
 		}
-		if(first || _noc.tot_hops < minHops){
-			first = false;
-			minHops = _noc.tot_hops;
-			d = dram;
-		}
+		_noc.tot_hops = min_hops;
+		_noc.DRAM_acc = std::move(DRAM_acc);
+		mem.set_layout({cur_group});
+		return;
 	}
-	_noc.tot_hops = minHops;
-	return d;
+
+	typedef std::pair<hop_t, didx_t> cost_pair;
+	std::vector<cost_pair> costs;
+
+	for(didx_t group_idx = 0; group_idx < ngroup; ++group_idx){
+		_noc.clear();
+		_noc._toRemoteMem(layout, group_idx);
+		costs.push_back({_noc.tot_hops, group_idx});
+	}
+
+	constexpr auto comp = [](const cost_pair& a, const cost_pair& b){
+		return a > b;
+	};
+	std::make_heap(costs.begin(), costs.end(), comp);
+
+	std::vector<didx_t> group_vec;
+	group_vec.reserve(il_group_num);
+	for(didx_t i=0; i<il_group_num; ++i){
+		std::pop_heap(costs.begin(), costs.end(), comp);
+		group_vec.push_back(costs.back().second);
+		costs.pop_back();
+	}
+
+	std::sort(group_vec.begin(), group_vec.end());
+	mem.set_layout(std::move(group_vec));
 }
 
-pos_t NoC::nearest_dram_to(const DataLayout& layout){
-	bool first = true;
-	hop_t minHops = 0;
-	pos_t d;
-	auto rLen = layout.rangeLength();
-	for(const auto& dram : dram_list){
+void NoC::nearest_groups_to(const DataLayout& layout, MemLayout& mem){
+	didx_t ngroup = il_group_start.size()-1;
+
+	if(il_group_num == 1){
 		_noc.clear();
-		for(cidx_t i=0; i<rLen; ++i){
-			auto it = layout.at(i);
-			vol_t curSize = it.range.size();
-			if(curSize <= 0) continue;
-			if(it.numTile == 1){
-				_noc.unicast(dram, it.tiles[0], curSize);
-			}else{
-				_noc.multicast(dram, it.tiles, it.numTile, curSize);
+
+		bool first = true;
+		hop_t min_hops = 0;
+		auto DRAM_acc = _noc.DRAM_acc;
+		didx_t cur_group;
+
+		for(didx_t group_idx = 0; group_idx < ngroup; ++group_idx){
+			_noc._fromRemoteMem(group_idx, layout);
+			if(first || _noc.tot_hops < min_hops){
+				first = false;
+				min_hops = _noc.tot_hops;
+				DRAM_acc = _noc.DRAM_acc;
+				cur_group = group_idx;
 			}
-			_noc.tot_DRAM_acc += curSize;
+			_noc.clear();
 		}
-		if(first || _noc.tot_hops < minHops){
-			first = false;
-			minHops = _noc.tot_hops;
-			d = dram;
-		}
+		_noc.tot_hops = min_hops;
+		_noc.DRAM_acc = std::move(DRAM_acc);
+		mem.set_layout({cur_group});
+		return;
 	}
-	_noc.tot_hops = minHops;
-	return d;
+
+	typedef std::pair<hop_t, didx_t> cost_pair;
+	std::vector<cost_pair> costs;
+
+	for(didx_t group_idx = 0; group_idx < ngroup; ++group_idx){
+		_noc.clear();
+		_noc._fromRemoteMem(group_idx, layout);
+		costs.push_back({_noc.tot_hops, group_idx});
+	}
+
+	constexpr auto comp = [](const cost_pair& a, const cost_pair& b){
+		return a > b;
+	};
+	std::make_heap(costs.begin(), costs.end(), comp);
+
+	std::vector<didx_t> group_vec;
+	group_vec.reserve(il_group_num);
+	for(didx_t i=0; i<il_group_num; ++i){
+		std::pop_heap(costs.begin(), costs.end(), comp);
+		group_vec.push_back(costs.back().second);
+		costs.pop_back();
+	}
+
+	std::sort(group_vec.begin(), group_vec.end());
+	mem.set_layout(std::move(group_vec));
 }
 
 std::ostream& operator<<(std::ostream& os, const NoC& noc){
-	return os<<"NoC(hops="<<noc.tot_hops<<", DRAM acc="<<noc.tot_DRAM_acc<<")";
+	os << "NoC(hops=" << noc.tot_hops;
+	os << ", tot DRAM acc=" <<noc.get_tot_DRAM_acc();
+	os << "[";
+	for(access_t acc : noc.DRAM_acc){
+		os << acc << ',';
+	}
+	os << "])";
+	return os;
 }
 
 NoC::HopCount::HopCount():factor(1){}

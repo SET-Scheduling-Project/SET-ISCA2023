@@ -11,13 +11,12 @@
 
 struct LayerScheme{
 	// Total cost.
-	SchNode::SchCost totCost;
+	SchNode::SchCost totCost, coreCost;
 	// Used to update external ubuf cost.
 	energy_t extUbufEnergy;
 	CoreMapper::CoreMapping tileSch;
 	PlaceSch place;
-	std::vector<MemLayout> iMemLayouts;
-	MemLayout oMemLayout;
+	MemLayouts memLayouts;
 	NoC noc;
 	bool isValid() const;
 };
@@ -37,7 +36,7 @@ public:
 	virtual vol_t get_ubuf_size() const override;
 	virtual LayerScheme search(LNode* curNode) const override;
 	void initLayouts(PlaceSch& place, const Node& layerT, const fmap_shape& ofmShape, len_t B) const;
-	void calcNoC(NoC& noc, const PlaceSch& place, std::vector<MemLayout>& iMemLayouts, MemLayout& oMemLayout, LNode* curNode) const;
+	void calcNoC(NoC& noc, const PlaceSch& place, MemLayouts& memLayouts, LNode* curNode) const;
 	virtual bool updateNoC(LNode* curNode, NoC& old_noc) const override;
 };
 

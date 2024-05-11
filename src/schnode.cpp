@@ -132,10 +132,9 @@ bool LNode::search(){
 	ubuf_energy = res.extUbufEnergy;
 	place_sch = std::move(res.place);
 	tileSch = res.tileSch;
-	iMemLayouts = std::move(res.iMemLayouts);
-	oMemLayout = std::move(res.oMemLayout);
+	memLayouts = std::move(res.memLayouts);
 	cost = res.totCost;
-	comp_time = cost.time;
+	core_cost = res.coreCost;
 	return true;
 }
 
@@ -196,12 +195,19 @@ void LNode::searchInc(LTreeNode* node){
 }
 
 bool LNode::updateNoc(NoC& old_noc){
+	energy_t old_noc_cost = noc.get_cost();
 	if(!layerMapper->updateNoC(this, old_noc)) return false;
+
+	cost.energy -= old_noc_cost;
+	cost.energy += noc.get_cost();
 
 	bool is_seg = (parent == nullptr) || parent->is_DRAM_cut();
 	if(is_seg){
 		cycle_t noc_time = noc.get_time();
-		cost.time = MAX(comp_time, noc_time);
+		cost.time = MAX(core_cost.time, noc_time);
+	}else{
+		cycle_t noc_time = noc.get_dram_time();
+		cost.time = MAX(core_cost.time, noc_time);
 	}
 	return true;
 }
@@ -237,12 +243,20 @@ const CoreMapper::CoreMapping& LNode::get_tileSch() const {
 	return tileSch;
 }
 
+const MemLayouts& LNode::get_MemLayouts() const {
+	return memLayouts;
+}
+
 const std::vector<MemLayout>& LNode::get_iMemLayouts() const {
-	return iMemLayouts;
+	return memLayouts.iMemLayouts;
+}
+
+const MemLayout& LNode::get_wMemLayout() const {
+	return memLayouts.wMemLayout;
 }
 
 const MemLayout& LNode::get_oMemLayout() const {
-	return oMemLayout;
+	return memLayouts.oMemLayout;
 }
 
 void LNode::print_struct(std::string pad, std::ostream& os) const{
@@ -255,6 +269,11 @@ void LNode::print_struct(std::string pad, std::ostream& os) const{
 	os << '/' << layert.layer().ofmap_shape().tot_size(num_batch);
 	os << " Max NoC: " << noc.get_max_link();
 	os << ' ' << tileSch.tile_part;
+	os << " (";
+	for(const auto& it : memLayouts.oMemLayout.get_layouts()){
+		os << it << ',';
+	}
+	os << ")";
 	os << std::endl;
 }
 
@@ -356,10 +375,6 @@ bool Cut::updateNoc(NoC& old_noc){
 	if(updated_index.empty())
 		return false;
 
-	bool is_top = is_DRAM_cut();
-	bool is_seg = (!is_top) && (parent == nullptr || parent->is_DRAM_cut());
-	bool is_top_seg = is_top || is_seg;
-
 	if(3 * updated_index.size() >= children.size()){
 		// More than 1/3 is changed, just re-add.
 		old_noc = std::move(noc);
@@ -379,18 +394,7 @@ bool Cut::updateNoc(NoC& old_noc){
 		}
 		noc *= num_bgrp;
 	}
-
-	if(is_top_seg){
-		cost.time = 0;
-		for(auto child: children){
-			cost.time += child->get_cost().time;
-		}
-		cost.time *= num_bgrp;
-	}
-	if(is_seg){
-		cycle_t noc_time = noc.get_time();
-		cost.time = MAX(cost.time, noc_time);
-	}
+	// Update cost in SCut/TCut::updateNoC
 	return true;
 }
 
@@ -474,8 +478,7 @@ void TCut::construct(LTreeNode* node){
 				return;
 			}
 		}
-		cost.time += p->get_cost().time;
-		cost.energy += p->get_cost().energy;
+		cost += p->get_cost();
 		noc += p->get_noc();
 		ubuf_energy += p->get_ubuf_energy();
 		buf_energy += p->get_buf_energy();
@@ -529,6 +532,25 @@ void TCut::construct(LTreeNode* node){
 TCut::TCut(LTreeNode *_node, const Cluster& _c, SchNode::cut_ptr _parent)
 	:Cut(NodeType::T, _node, _c, _parent){
 	TCut::construct(_node);
+}
+
+bool TCut::updateNoc(NoC& old_noc){
+	if(!Cut::updateNoc(old_noc)) return false;
+
+	bool is_top = (parent == nullptr);
+	bool is_seg = (!is_top) && parent->is_DRAM_cut();
+
+	cost.time = 0;
+	cost.energy = 0;
+	for(auto child: children){
+		cost += child->get_cost();
+	}
+	cost *= num_bgrp;
+	if(is_seg){
+		cycle_t noc_time = noc.get_time();
+		cost.time = MAX(cost.time, noc_time);
+	}
+	return true;
 }
 
 SchNode* TCut::copy(Cut* newParent) const{
@@ -590,7 +612,6 @@ void SCut::construct(LTreeNode* node){
 			valid = false;
 			return;
 		}
-		//cost.time += p->get_cost().time;
 		cost.energy += p->get_cost().energy;
 		max_time = MAX(p->get_cost().time, max_time);
 		noc += p->get_noc();
@@ -630,6 +651,26 @@ SCut::SCut(LTreeNode *_node, const Cluster& _c, SchNode::cut_ptr _parent)
 	:Cut(NodeType::S, _node, _c, _parent),
 	 stage(_node->get_stages()), num_stage(_node->get_num_stage()){
 	SCut::construct(_node);
+}
+
+bool SCut::updateNoc(NoC& old_noc){
+	if(!Cut::updateNoc(old_noc)) return false;
+
+	bool is_seg = (parent == nullptr) || parent->is_DRAM_cut();
+	cycle_t max_time = 0;
+
+	cost.energy = 0;
+	for(auto child: children){
+		cost.energy += child->get_cost().energy;
+		max_time = MAX(child->get_cost().time, max_time);
+	}
+	cost.time = max_time * (num_stage + num_bgrp);
+	cost.energy *= num_bgrp;
+	if(is_seg){
+		cycle_t noc_time = noc.get_time();
+		cost.time = MAX(cost.time, noc_time);
+	}
+	return true;
 }
 
 SchNode* SCut::copy(Cut* newParent) const{
