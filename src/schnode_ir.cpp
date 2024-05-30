@@ -7,8 +7,9 @@
 SchNode::csn_ptr SchNode::root;
 SchNode::wlid_t SchNode::workload_cnt;
 SchNode::tfid_t SchNode::transferid_cnt;
-std::vector<std::vector<std::vector<SchNode::jsonindex_t> > > SchNode::wlid; // core layer batch -> workload_list[core][wlid]
+// std::vector<std::vector<std::vector<SchNode::jsonindex_t> > > SchNode::wlid; // core layer batch -> workload_list[core][wlid]
 // core layer bchw_lowerbound
+std::vector<std::vector<std::map<BCHW_coor,SchNode::jsonindex_t> > > SchNode::wlid; // core layer bchw -> workload_list[core][wlid]
 std::vector<bool> SchNode::from_core, SchNode::weight_from_core, SchNode::to_dram;
 std::vector<std::map<fmap_range, SchNode::jsonindex_t> > SchNode::ofmapid;
 std::vector<std::set<Json::Value> > SchNode::curr_ifmap, SchNode::curr_weight;
@@ -36,9 +37,6 @@ Json::Value SchNode::IR_gen() const{
 	wlid.resize(num_cores);
 	for(size_t i=0;i<wlid.size();++i){
 		wlid[i].resize(network->len());
-		for(size_t j=0;j<wlid[i].size();++j){
-			wlid[i][j].resize(tot_batch);
-		}
 	}
 	ofmapid.resize(0);
 	from_core.resize(0);
@@ -75,8 +73,8 @@ Json::Value SchNode::IR_gen() const{
 		for(Json::Value& wl: workload_list[i]){
 			for(Json::Value& buffer: wl["buffer"]){
 				if(buffer["type"] == "ifmap"){
-					buffer["workload_id"] = workload_list[i][wlid[i][name_to_id[buffer["layer"].asString()]][buffer["lower"][0u].asUInt()]]["workload_id"];
-					buffer["source"] = workload_list[i][wlid[i][name_to_id[buffer["layer"].asString()]][buffer["lower"][(Json::Value::UInt) 0].asUInt()]]["ifmap_temp"][buffer["layer"].asString()+"_"+std::to_string(buffer["lower"][(Json::Value::UInt) 0].asUInt())]["source"];
+					buffer["workload_id"] = workload_list[i][wlid[i][name_to_id[buffer["layer"].asString()]][{buffer["lower"][0u].asUInt(),buffer["lower"][1u].asUInt(),buffer["lower"][2u].asUInt(),buffer["lower"][3u].asUInt()}]]["workload_id"];
+					buffer["source"] = workload_list[i][wlid[i][name_to_id[buffer["layer"].asString()]][{buffer["lower"][0u].asUInt(),buffer["lower"][1u].asUInt(),buffer["lower"][2u].asUInt(),buffer["lower"][3u].asUInt()}]]["ifmap_temp"][buffer["layer"].asString()+"_"+std::to_string(buffer["lower"][(Json::Value::UInt) 0].asUInt())]["source"];
 					for(Json::Value &source: buffer["source"]){
 						buffer["transfer_id"].append(source["transfer_id"]);
 					}
@@ -84,12 +82,12 @@ Json::Value SchNode::IR_gen() const{
 				if(buffer["type"] == "weight"){
 					if(buffer.isMember("from_core")){
 						if(!buffer.isMember("workload_id")){
-							buffer["workload_id"] = workload_list[i][wlid[i][name_to_id[buffer["layer"].asString()]][buffer["lower"][0u].asUInt()]]["workload_id"];
+							buffer["workload_id"] = workload_list[i][wlid[i][name_to_id[buffer["layer"].asString()]][{buffer["lower"][0u].asUInt(),buffer["lower"][1u].asUInt(),buffer["lower"][2u].asUInt(),buffer["lower"][3u].asUInt()}]]["workload_id"];
 						}
 						buffer.removeMember("from_core");
 					}
 					if(!buffer.isMember("source")){
-						buffer["source"] = workload_list[i][wlid[i][name_to_id[buffer["layer"].asString()]][buffer["lower"][(Json::Value::UInt) 0].asUInt()]]["weight_temp"][buffer["layer"].asString()+"_"+std::to_string(buffer["lower"][(Json::Value::UInt) 0].asUInt())]["source"];
+						buffer["source"] = workload_list[i][wlid[i][name_to_id[buffer["layer"].asString()]][{buffer["lower"][0u].asUInt(),buffer["lower"][1u].asUInt(),buffer["lower"][2u].asUInt(),buffer["lower"][3u].asUInt()}]]["weight_temp"][buffer["layer"].asString()+"_"+std::to_string(buffer["lower"][(Json::Value::UInt) 0].asUInt())]["source"];
 					}
 					if(!buffer.isMember("transfer_id")){
 						for(Json::Value &source: buffer["source"]){
@@ -361,7 +359,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 						//ifmap["workload_id"] = workload_list[from_id][wlid[from_id][layerno][intersect.b.from]]["workload_id"];
 						ifmap["layer_name"] = node.name();
 
-						jsonindex_t prev_wlid = wlid[from_id][layerno][intersect.b.from];
+						jsonindex_t prev_wlid = wlid[from_id][layerno][{prev_range.b.from,prev_range.c.from,prev_range.h.from,prev_range.w.from}];
 						wlid_t prev_workload_id = workload_list[from_id][prev_wlid]["workload_id"].asUInt();
 						if(layert.getIfmPrevs().contains(layerno)){
 							max_from_workload_id = std::max(max_from_workload_id, prev_workload_id);
@@ -484,7 +482,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 							intersect.c -= real_prev_channel_offset;
 							tfid_t transfer_id;
 
-							jsonindex_t prev_wlid = wlid[from_id][layerno][intersect.b.from];
+							jsonindex_t prev_wlid = wlid[from_id][layerno][{prev_range.b.from,prev_range.c.from,prev_range.h.from,prev_range.w.from}];
 							wlid_t prev_workload_id = workload_list[from_id][prev_wlid]["workload_id"].asUInt();
 							if(layert.getIfmPrevs().contains(layerno)){
 								max_from_workload_id = std::max(max_from_workload_id, prev_workload_id);
@@ -804,8 +802,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 			workload["buffer"].append(ofmap);
 		}
 
-		for(len_t batch=range.b.from; batch<range.b.to; ++batch)
-			wlid[core_id][layerid][batch] = workload_list[core_id].size();
+		wlid[core_id][layerid][(BCHW_coor){range.b.from,range.c.from,range.h.from,range.w.from}] = workload_list[core_id].size();
 
 		workload_list[core_id].append(workload);
 
