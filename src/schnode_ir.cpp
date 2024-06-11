@@ -180,655 +180,705 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 	empty_list.resize(0);
 	const auto& ofm_parts = place_sch.getOfmL();
 	for(auto part: ofm_parts){
-		fmap_range range = part.first;
-		if(range.is_empty()) continue;
-		range.b += batch_offset;
-		pos_t core = part.second;
-		Cluster::xyid_t core_id = Cluster::get_xyid(core);
-		Json::Value workload;
-		workload["workload_id"] = workload_cnt++;
-		workload["layer_name"] = layert.name();
-		if(REF_IS_INSTANCE(layert.layer(), FCLayer)){
-			workload["layer_type"] = "fc";
-		}
-		else if(REF_IS_INSTANCE(layert.layer(), ConvLayer)){
-			workload["layer_type"] = "conv2d";
-		}
-		else if(REF_IS_INSTANCE(layert.layer(), PoolingLayer)){
-			workload["layer_type"] = "pool";
-		}
-		else if(REF_IS_INSTANCE(layert.layer(), EltwiseLayer)){
-			workload["layer_type"] = "element_wise";
-		}
-		else if(REF_IS_INSTANCE(layert.layer(), PTPLayer)){
-			workload["layer_type"] = "point_to_point";
-		}
-		Json::Value oblock_lower, oblock_upper;
-		oblock_lower.append(range.b.from);
-		oblock_lower.append(range.c.from);
-		oblock_lower.append(range.h.from);
-		oblock_lower.append(range.w.from);
+		for(len_t b_coor=0; b_coor<tileSch.tile_part.B; ++b_coor){
+			for(len_t c_coor=0; c_coor<tileSch.tile_part.K; ++c_coor){
+				for(len_t h_coor=0; h_coor<tileSch.tile_part.H; ++h_coor){
+					for(len_t w_coor=0; w_coor<tileSch.tile_part.W; ++w_coor){
+						auto fraction = [](len_t n, len_t d, len_t coor){
+															return n*coor/d;
+														};
+						fmap_range range = part.first, range_size = range;
+						if(range.is_empty()) continue;
 
-		oblock_upper.append(range.b.to - 1);
-		oblock_upper.append(range.c.to - 1);
-		oblock_upper.append(range.h.to - 1);
-		oblock_upper.append(range.w.to - 1);
-
-		workload["workload"].append(oblock_lower);
-		workload["workload"].append(oblock_upper);
-		workload["ofmap_size"] = range.size() * 8;
-
-		workload["time"] = (int)tileSch.cost.time;
-
-		if(REF_IS_INSTANCE(layert.layer(), ConvLayer) && !layert.hasWgtPrevs()){
-			Json::Value weight;
-			weight["lower"] = range.c.from;
-			weight["upper"] = range.c.to - 1;
-			Json::Value key;
-			key["segment"] = segment;
-			key["layer_name"] = layert.name();
-			key["lower"] = weight["lower"];
-			key["upper"] = weight["upper"];
-			Json::Value destination;
-			destination["type"] = "core";
-			destination["id"] = core_id;
-			destination["workload_id"] = workload["workload_id"];
-			tfid_t transfer_id = 0;
-			if(DRAM_weight_pos.count(key)){
-				transfer_id = DRAM["out"][DRAM_weight_pos[key]]["transfer_id"].asUInt();
-				len_t batch_size = 0;
-				if(root->get_type() != NodeType::L){
-					batch_size = tot_batch/dynamic_cast<const Cut*>(root)->get_num_bgrp();
-				}
-				else{
-					batch_size = tot_batch;
-				}
-				if(batch_offset % batch_size == 0){
-					DRAM["out"][DRAM_weight_pos[key]]["destination"].append(destination);
-				}
-			}
-			else{
-				DRAM_weight_pos[key] = DRAM["out"].size();
-				transfer_id = transferid_cnt++;
-				Json::Value dram_weight;
-				dram_weight["destination"].append(destination);
-				dram_weight["layer_name"] = layert.name();
-				dram_weight["lower"] = weight["lower"];
-				dram_weight["upper"] = weight["upper"];
-				dram_weight["related_ifmap"] = empty_list;
-				dram_weight["transfer_id"] = transfer_id;
-				ConvLayer::Workload wl = static_cast<const ConvLayer&>(layert.layer()).get_workload();
-				dram_weight["size"] = wl.R * wl.S * wl.C * range.c.size() * 8;
-				dram_weight["type"] = "weight";
-				DRAM["out"].append(dram_weight);
-			}
-			weight["transfer_id"].append(transfer_id);
-			workload["weight"] = weight;
-		}
-
-		fmap_range ofmap_range = range;
-		fmap_range weight_range = range;
-		layert.layer().ofm_to_ifm(ofmap_range);
-		layert.layer().ofm_to_wgt(weight_range);
-
-		if(REF_IS_INSTANCE(layert.layer(), ConvLayer) && layert.hasWgtPrevs()){
-			Json::Value weight;
-			weight["lower"].append(weight_range.b.from);
-			weight["lower"].append(weight_range.c.from);
-			weight["lower"].append(weight_range.h.from);
-			weight["upper"].append(weight_range.b.to-1);
-			weight["upper"].append(weight_range.c.to-1);
-			weight["upper"].append(weight_range.h.to-1);
-			weight["from_ofmap"] = true;
-			weight["size"] = weight_range.size() * 8;
-			workload["weight"] = weight;
-		}
-
-		workload["ifmap"]["lower"].append(ofmap_range.b.from);
-		workload["ifmap"]["lower"].append(ofmap_range.c.from);
-		workload["ifmap"]["lower"].append(ofmap_range.h.from);
-		workload["ifmap"]["lower"].append(ofmap_range.w.from);
-		workload["ifmap"]["upper"].append(ofmap_range.b.to-1);
-		workload["ifmap"]["upper"].append(ofmap_range.c.to-1);
-		workload["ifmap"]["upper"].append(ofmap_range.h.to-1);
-		workload["ifmap"]["upper"].append(ofmap_range.w.to-1);
-
-		Bitset prev = layert.getPrevs();
-		Bitset next = layert.get_nexts();
-		wlid_t max_from_workload_id = 0;
-		wlid_t weight_max_from_workload_id = 0;
-		//std::cerr << prev;
-		bool from_other_core = false, weight_from_other_core = false;
-		len_t prev_channel_offset = 0;
-		FOR_BITSET(layerno, prev){
-			const Node& node = network->getNode(layerno);
-			const LNode* lnode = root->get_lnode_by_id(layerno);
-			assert(layert.getIfmPrevs().contains(layerno)^layert.getWgtPrevs().contains(layerno));
-			const auto input_range = layert.getIfmPrevs().contains(layerno) ? ofmap_range : weight_range;
-			const auto real_prev_channel_offset = layert.getIfmPrevs().contains(layerno) ? prev_channel_offset : 0;
-			if(dirp_set.contains(layerno)){
-				for(auto prev_part: lnode->get_place_sch().getOfmL()){
-					for(len_t prev_batch_offset=0; prev_batch_offset<tot_batch; prev_batch_offset += lnode->num_batch){
-						Cluster::xyid_t from_id = Cluster::get_xyid(prev_part.second);
-						fmap_range prev_range = prev_part.first;
-						prev_range.b += prev_batch_offset;
-						prev_range.c += real_prev_channel_offset;
-						/*if(layert.name() == "encoder1_QK" && !layert.getIfmPrevs().contains(layerno))
-						{
-							printf("prev_range_from = %d %d %d %d\n",prev_range.b.from,prev_range.c.from,prev_range.h.from,prev_range.w.from);
-							printf("prev_range_to = %d %d %d %d\n",prev_range.b.to,prev_range.c.to,prev_range.h.to,prev_range.w.to);
-							printf("input_range_from = %d %d %d %d\n",input_range.b.from,input_range.c.from,input_range.h.from,input_range.w.from);
-							printf("input_range_to = %d %d %d %d\n",input_range.b.to,input_range.c.to,input_range.h.to,input_range.w.to);
-							printf("batch_offset = %d\n\n",batch_offset);
-						}*/
-						fmap_range intersect = input_range.intersect(prev_range);
-						if(intersect.is_empty())
-							continue;
-						prev_range.c -= real_prev_channel_offset;
-						intersect.c -= real_prev_channel_offset;
-						if(layert.getIfmPrevs().contains(layerno)){
-							from_other_core = 1;
+						range.b += batch_offset;
+						pos_t core = part.second;
+						Cluster::xyid_t core_id = Cluster::get_xyid(core);
+						Json::Value workload;
+						workload["workload_id"] = workload_cnt++;
+						workload["layer_name"] = layert.name();
+						if(REF_IS_INSTANCE(layert.layer(), FCLayer)){
+							workload["layer_type"] = "fc";
 						}
-						else{
-							weight_from_other_core = 1;
+						else if(REF_IS_INSTANCE(layert.layer(), ConvLayer)){
+							workload["layer_type"] = "conv2d";
 						}
-						Json::Value ifmap;
-						ifmap["lower"].append(intersect.b.from);
-						ifmap["lower"].append(intersect.c.from);
-						ifmap["lower"].append(intersect.h.from);
-						ifmap["lower"].append(intersect.w.from);
-
-						ifmap["upper"].append(intersect.b.to-1);
-						ifmap["upper"].append(intersect.c.to-1);
-						ifmap["upper"].append(intersect.h.to-1);
-						ifmap["upper"].append(intersect.w.to-1);
-
-						ifmap["channel"].append(real_prev_channel_offset + intersect.c.from);
-						ifmap["channel"].append(real_prev_channel_offset + intersect.c.to-1);
-
-						/*vol_t ifmap_size = 1;
-						for(int i=0; i<4; ++i){
-							ifmap_size *= ifmap["source"]["upper"][i].asUInt() - ifmap["source"]["lower"][i].asUInt();
+						else if(REF_IS_INSTANCE(layert.layer(), PoolingLayer)){
+							workload["layer_type"] = "pool";
 						}
-						ifmap["source"]["size"] = ifmap_size * 8;*/
-
-						ifmap["size"] = intersect.size()*8;
-
-						ifmap["type"] = "core";
-						ifmap["id"] = from_id;
-						//ifmap["workload_id"] = workload_list[from_id][wlid[from_id][layerno][intersect.b.from]]["workload_id"];
-						ifmap["layer_name"] = node.name();
-
-						jsonindex_t prev_wlid = wlid[from_id][layerno][{prev_range.b.from,prev_range.c.from,prev_range.h.from,prev_range.w.from}];
-						wlid_t prev_workload_id = workload_list[from_id][prev_wlid]["workload_id"].asUInt();
-						if(layert.getIfmPrevs().contains(layerno)){
-							max_from_workload_id = std::max(max_from_workload_id, prev_workload_id);
+						else if(REF_IS_INSTANCE(layert.layer(), EltwiseLayer)){
+							workload["layer_type"] = "element_wise";
 						}
-						else{
-							weight_max_from_workload_id = std::max(weight_max_from_workload_id, prev_workload_id);
+						else if(REF_IS_INSTANCE(layert.layer(), PTPLayer)){
+							workload["layer_type"] = "point_to_point";
 						}
-						if(ofmapid[prev_workload_id].count(intersect)){
-							ifmap["transfer_id"] = workload_list[from_id][prev_wlid]["ofmap"][ofmapid[prev_workload_id][intersect]]["transfer_id"];
-						}
-						else{
-							ifmap["transfer_id"] = transferid_cnt++;
-						}
+						Json::Value oblock_lower, oblock_upper;
+						oblock_lower.append(range.b.from);
+						oblock_lower.append(range.c.from);
+						oblock_lower.append(range.h.from);
+						oblock_lower.append(range.w.from);
 
-						if(layert.getIfmPrevs().contains(layerno)){
-							workload["ifmap"]["transfer_id"].append(ifmap["transfer_id"]);
-							workload["ifmap_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
-						}
-						else{
-							workload["weight"]["transfer_id"].append(ifmap["transfer_id"]);
-							workload["weight_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
-						}
+						oblock_upper.append(range.b.to - 1);
+						oblock_upper.append(range.c.to - 1);
+						oblock_upper.append(range.h.to - 1);
+						oblock_upper.append(range.w.to - 1);
 
+						workload["workload"].append(oblock_lower);
+						workload["workload"].append(oblock_upper);
+						workload["ofmap_size"] = range.size() * 8;
 
-						Json::Value destination;
-						destination["type"] = "core";
-						destination["id"] = core_id;
-						destination["workload_id"] = workload["workload_id"];
-						destination["layer_name"] = layert.name();
+						workload["time"] = (int)tileSch.cost.time;
 
-						if(ofmapid[prev_workload_id].count(intersect)){
-							workload_list[from_id][prev_wlid]["ofmap"][ofmapid[prev_workload_id][intersect]]["destination"].append(destination);
-						}
-						else{
-							Json::Value ofmap;
-							ofmap["lower"].append(intersect.b.from);
-							ofmap["lower"].append(intersect.c.from);
-							ofmap["lower"].append(intersect.h.from);
-							ofmap["lower"].append(intersect.w.from);
-
-							ofmap["upper"].append(intersect.b.to-1);
-							ofmap["upper"].append(intersect.c.to-1);
-							ofmap["upper"].append(intersect.h.to-1);
-							ofmap["upper"].append(intersect.w.to-1);
-
-							ofmap["transfer_id"] = ifmap["transfer_id"];
-							ofmap["size"] = intersect.size()*8;
-
-							ofmap["destination"].append(destination);
-							ofmapid[prev_workload_id][intersect] = workload_list[from_id][prev_wlid]["ofmap"].size();
-							workload_list[from_id][prev_wlid]["ofmap"].append(ofmap);
-						}
-					}
-				}
-			}
-			else{
-				int lower_c, upper_c;
-				lower_c = std::max(0, (int)input_range.c.from - (int)real_prev_channel_offset);
-				upper_c = std::min((int)node.layer().ofmap_shape().c, (int)input_range.c.to - (int)real_prev_channel_offset);
-				if(lower_c < upper_c){
-					Json::Value related_ifmap;
-					Json::Value ifmap;
-					ifmap["lower"].append(input_range.b.from);
-					ifmap["lower"].append(lower_c);
-					ifmap["lower"].append(input_range.h.from);
-					ifmap["lower"].append(input_range.w.from);
-
-					ifmap["upper"].append(input_range.b.to-1);
-					ifmap["upper"].append(upper_c-1);
-					ifmap["upper"].append(input_range.h.to-1);
-					ifmap["upper"].append(input_range.w.to-1);
-
-					ifmap["channel"].append(real_prev_channel_offset + lower_c);
-					ifmap["channel"].append(real_prev_channel_offset + upper_c-1);
-
-					vol_t ifmap_size = 1;
-					for(int i=0; i<4; ++i){
-						ifmap_size *= ifmap["upper"][i].asUInt() - ifmap["lower"][i].asUInt() + 1;
-					}
-					ifmap["size"] = ifmap_size * 8;
-
-					ifmap["type"] = "DRAM";
-					ifmap["id"] = 0;
-					ifmap["layer_name"] = node.name();
-
-					Json::Value key;
-					key["lower"] = ifmap["lower"];
-					key["upper"] = ifmap["upper"];
-					key["source_layer_name"] = node.name();
-					key["destination_layer_name"] = layert.name();
-					key["type"] = layert.getIfmPrevs().contains(layerno) ? "ifmap" : "weight";
-
-					tfid_t ofmap_transfer_id;
-
-					if(DRAM_ofmap_pos.count(key)){
-						ofmap_transfer_id = DRAM["out"][DRAM_ofmap_pos[key]]["transfer_id"].asUInt();
-					}
-					else{
-						ofmap_transfer_id = transferid_cnt++;
-					}
-
-					for(auto prev_part: lnode->get_place_sch().getOfmL()){
-						for(len_t prev_batch_offset=0; prev_batch_offset<tot_batch; prev_batch_offset += lnode->num_batch){
-							Cluster::xyid_t from_id = Cluster::get_xyid(prev_part.second);
-							fmap_range prev_range = prev_part.first;
-							prev_range.b += prev_batch_offset;
-							prev_range.c += real_prev_channel_offset;
-							/*if(layert.name() == "encoder1_QK" && !layert.getIfmPrevs().contains(layerno))
-							{
-								printf("prev_range_from = %d %d %d %d\n",prev_range.b.from,prev_range.c.from,prev_range.h.from,prev_range.w.from);
-								printf("prev_range_to = %d %d %d %d\n",prev_range.b.to,prev_range.c.to,prev_range.h.to,prev_range.w.to);
-								printf("input_range_from = %d %d %d %d\n",input_range.b.from,input_range.c.from,input_range.h.from,input_range.w.from);
-								printf("input_range_to = %d %d %d %d\n",input_range.b.to,input_range.c.to,input_range.h.to,input_range.w.to);
-								printf("batch_offset = %d\n\n",batch_offset);
-							}*/
-							fmap_range intersect = input_range.intersect(prev_range);
-							if(intersect.is_empty())
-								continue;
-							prev_range.c -= real_prev_channel_offset;
-							intersect.c -= real_prev_channel_offset;
-							tfid_t transfer_id;
-
-							jsonindex_t prev_wlid = wlid[from_id][layerno][{prev_range.b.from,prev_range.c.from,prev_range.h.from,prev_range.w.from}];
-							wlid_t prev_workload_id = workload_list[from_id][prev_wlid]["workload_id"].asUInt();
-							if(layert.getIfmPrevs().contains(layerno)){
-								max_from_workload_id = std::max(max_from_workload_id, prev_workload_id);
+						if(REF_IS_INSTANCE(layert.layer(), ConvLayer) && !layert.hasWgtPrevs()){
+							Json::Value weight;
+							weight["lower"] = range.c.from;
+							weight["upper"] = range.c.to - 1;
+							Json::Value key;
+							key["segment"] = segment;
+							key["layer_name"] = layert.name();
+							key["lower"] = weight["lower"];
+							key["upper"] = weight["upper"];
+							Json::Value destination;
+							destination["type"] = "core";
+							destination["id"] = core_id;
+							destination["workload_id"] = workload["workload_id"];
+							tfid_t transfer_id = 0;
+							if(DRAM_weight_pos.count(key)){
+								transfer_id = DRAM["out"][DRAM_weight_pos[key]]["transfer_id"].asUInt();
+								len_t batch_size = 0;
+								if(root->get_type() != NodeType::L){
+									batch_size = tot_batch/dynamic_cast<const Cut*>(root)->get_num_bgrp();
+								}
+								else{
+									batch_size = tot_batch;
+								}
+								if(batch_offset % batch_size == 0){
+									DRAM["out"][DRAM_weight_pos[key]]["destination"].append(destination);
+								}
 							}
 							else{
-								weight_max_from_workload_id = std::max(weight_max_from_workload_id, prev_workload_id);
+								DRAM_weight_pos[key] = DRAM["out"].size();
+								transfer_id = transferid_cnt++;
+								Json::Value dram_weight;
+								dram_weight["destination"].append(destination);
+								dram_weight["layer_name"] = layert.name();
+								dram_weight["lower"] = weight["lower"];
+								dram_weight["upper"] = weight["upper"];
+								dram_weight["related_ifmap"] = empty_list;
+								dram_weight["transfer_id"] = transfer_id;
+								ConvLayer::Workload wl = static_cast<const ConvLayer&>(layert.layer()).get_workload();
+								dram_weight["size"] = wl.R * wl.S * wl.C * range.c.size() * 8;
+								dram_weight["type"] = "weight";
+								DRAM["out"].append(dram_weight);
 							}
-							//max_prev_wlid = std::max(max_prev_wlid, prev_workload_id);
-							Json::Value destination;
-							destination["type"] = "DRAM";
-							destination["id"] = 0;
-							destination["layer_name"] = layert.name();
+							weight["transfer_id"].append(transfer_id);
+							workload["weight"] = weight;
+						}
 
-							Json::Value source;
-							source["lower"].append(prev_range.b.from);
-							source["lower"].append(prev_range.c.from);
-							source["lower"].append(prev_range.h.from);
-							source["lower"].append(prev_range.w.from);
+						fmap_range ofmap_range = range;
+						fmap_range weight_range = range;
+						layert.layer().ofm_to_ifm(ofmap_range);
+						layert.layer().ofm_to_wgt(weight_range);
 
-							source["upper"].append(prev_range.b.to-1);
-							source["upper"].append(prev_range.c.to-1);
-							source["upper"].append(prev_range.h.to-1);
-							source["upper"].append(prev_range.w.to-1);
-							source["core_id"] = from_id;
-							source["workload_id"] = prev_workload_id;
+						if(REF_IS_INSTANCE(layert.layer(), ConvLayer) && layert.hasWgtPrevs()){
+							Json::Value weight;
+							weight["lower"].append(weight_range.b.from);
+							weight["lower"].append(weight_range.c.from);
+							weight["lower"].append(weight_range.h.from);
+							weight["upper"].append(weight_range.b.to-1);
+							weight["upper"].append(weight_range.c.to-1);
+							weight["upper"].append(weight_range.h.to-1);
+							weight["from_ofmap"] = true;
+							weight["size"] = weight_range.size() * 8;
+							workload["weight"] = weight;
+						}
 
-							if(ofmapid[prev_workload_id].count(prev_range)){
-								transfer_id = workload_list[from_id][prev_wlid]["ofmap"][ofmapid[prev_workload_id][prev_range]]["transfer_id"].asUInt();
-								source["transfer_id"] = transfer_id;
-								if(!SchNode::to_dram[prev_workload_id]){
-									workload_list[from_id][prev_wlid]["ofmap"][ofmapid[prev_workload_id][prev_range]]["destination"].append(destination);
-									SchNode::to_dram[prev_workload_id] = true;
-									DRAM_ifmap_pos[transfer_id] = DRAM["in"].size();
-									DRAM["in"].append(source);
+						workload["ifmap"]["lower"].append(ofmap_range.b.from);
+						workload["ifmap"]["lower"].append(ofmap_range.c.from);
+						workload["ifmap"]["lower"].append(ofmap_range.h.from);
+						workload["ifmap"]["lower"].append(ofmap_range.w.from);
+						workload["ifmap"]["upper"].append(ofmap_range.b.to-1);
+						workload["ifmap"]["upper"].append(ofmap_range.c.to-1);
+						workload["ifmap"]["upper"].append(ofmap_range.h.to-1);
+						workload["ifmap"]["upper"].append(ofmap_range.w.to-1);
+
+						Bitset prev = layert.getPrevs();
+						Bitset next = layert.get_nexts();
+						wlid_t max_from_workload_id = 0;
+						wlid_t weight_max_from_workload_id = 0;
+						//std::cerr << prev;
+						bool from_other_core = false, weight_from_other_core = false;
+						len_t prev_channel_offset = 0;
+						FOR_BITSET(layerno, prev){
+							const Node& node = network->getNode(layerno);
+							const LNode* lnode = root->get_lnode_by_id(layerno);
+							assert(layert.getIfmPrevs().contains(layerno)^layert.getWgtPrevs().contains(layerno));
+							const auto input_range = layert.getIfmPrevs().contains(layerno) ? ofmap_range : weight_range;
+							const auto real_prev_channel_offset = layert.getIfmPrevs().contains(layerno) ? prev_channel_offset : 0;
+							if(dirp_set.contains(layerno)){
+								for(auto prev_part: lnode->get_place_sch().getOfmL()){
+									for(len_t prev_batch_offset=0; prev_batch_offset<tot_batch; prev_batch_offset += lnode->num_batch){
+										for(len_t prev_b_coor=0; prev_b_coor<lnode->tileSch.tile_part.B; ++prev_b_coor){
+											for(len_t prev_c_coor=0; prev_c_coor<lnode->tileSch.tile_part.K; ++prev_c_coor){
+												for(len_t prev_h_coor=0; prev_h_coor<lnode->tileSch.tile_part.H; ++prev_h_coor){
+													for(len_t prev_w_coor=0; prev_w_coor<lnode->tileSch.tile_part.W; ++prev_w_coor){	
+														auto fraction = [](len_t n, len_t d, len_t coor){
+															return n*coor/d;
+														};
+														fmap_range prev_range = prev_part.first, range_size = prev_range;
+														prev_range.b.from=range_size.b.from+fraction(lnode->num_batch,lnode->tileSch.tile_part.B,prev_b_coor);
+														prev_range.b.to=range_size.b.from+fraction(lnode->num_batch,lnode->tileSch.tile_part.B,prev_b_coor+1);
+														prev_range.c.from=range_size.c.from+fraction(range_size.c.size(),lnode->tileSch.tile_part.K,prev_c_coor);
+														prev_range.c.to=range_size.c.from+fraction(range_size.c.size(),lnode->tileSch.tile_part.K,prev_c_coor+1);
+														prev_range.h.from=range_size.h.from+fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_c_coor);
+														prev_range.h.to=range_size.h.from+fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_c_coor+1);
+														prev_range.w.from=range_size.w.from+fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_c_coor);
+														prev_range.w.to=range_size.w.from+fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_c_coor+1);
+														Cluster::xyid_t from_id = Cluster::get_xyid(prev_part.second);
+														prev_range.b += prev_batch_offset;
+														prev_range.c += real_prev_channel_offset;
+														/*if(layert.name() == "encoder1_QK" && !layert.getIfmPrevs().contains(layerno))
+														{
+															printf("prev_range_from = %d %d %d %d\n",prev_range.b.from,prev_range.c.from,prev_range.h.from,prev_range.w.from);
+															printf("prev_range_to = %d %d %d %d\n",prev_range.b.to,prev_range.c.to,prev_range.h.to,prev_range.w.to);
+															printf("input_range_from = %d %d %d %d\n",input_range.b.from,input_range.c.from,input_range.h.from,input_range.w.from);
+															printf("input_range_to = %d %d %d %d\n",input_range.b.to,input_range.c.to,input_range.h.to,input_range.w.to);
+															printf("batch_offset = %d\n\n",batch_offset);
+														}*/
+														fmap_range intersect = input_range.intersect(prev_range);
+														if(intersect.is_empty())
+															continue;
+														prev_range.c -= real_prev_channel_offset;
+														intersect.c -= real_prev_channel_offset;
+														if(layert.getIfmPrevs().contains(layerno)){
+															from_other_core = 1;
+														}
+														else{
+															weight_from_other_core = 1;
+														}
+														Json::Value ifmap;
+														ifmap["lower"].append(intersect.b.from);
+														ifmap["lower"].append(intersect.c.from);
+														ifmap["lower"].append(intersect.h.from);
+														ifmap["lower"].append(intersect.w.from);
+
+														ifmap["upper"].append(intersect.b.to-1);
+														ifmap["upper"].append(intersect.c.to-1);
+														ifmap["upper"].append(intersect.h.to-1);
+														ifmap["upper"].append(intersect.w.to-1);
+
+														ifmap["channel"].append(real_prev_channel_offset + intersect.c.from);
+														ifmap["channel"].append(real_prev_channel_offset + intersect.c.to-1);
+
+														/*vol_t ifmap_size = 1;
+														for(int i=0; i<4; ++i){
+															ifmap_size *= ifmap["source"]["upper"][i].asUInt() - ifmap["source"]["lower"][i].asUInt();
+														}
+														ifmap["source"]["size"] = ifmap_size * 8;*/
+
+														ifmap["size"] = intersect.size()*8;
+
+														ifmap["type"] = "core";
+														ifmap["id"] = from_id;
+														//ifmap["workload_id"] = workload_list[from_id][wlid[from_id][layerno][intersect.b.from]]["workload_id"];
+														ifmap["layer_name"] = node.name();
+
+														jsonindex_t prev_wlid = wlid[from_id][layerno][{prev_range.b.from,prev_range.c.from,prev_range.h.from,prev_range.w.from}];
+														wlid_t prev_workload_id = workload_list[from_id][prev_wlid]["workload_id"].asUInt();
+														if(layert.getIfmPrevs().contains(layerno)){
+															max_from_workload_id = std::max(max_from_workload_id, prev_workload_id);
+														}
+														else{
+															weight_max_from_workload_id = std::max(weight_max_from_workload_id, prev_workload_id);
+														}
+														if(ofmapid[prev_workload_id].count(intersect)){
+															ifmap["transfer_id"] = workload_list[from_id][prev_wlid]["ofmap"][ofmapid[prev_workload_id][intersect]]["transfer_id"];
+														}
+														else{
+															ifmap["transfer_id"] = transferid_cnt++;
+														}
+
+														if(layert.getIfmPrevs().contains(layerno)){
+															workload["ifmap"]["transfer_id"].append(ifmap["transfer_id"]);
+															workload["ifmap_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
+														}
+														else{
+															workload["weight"]["transfer_id"].append(ifmap["transfer_id"]);
+															workload["weight_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
+														}
+
+
+														Json::Value destination;
+														destination["type"] = "core";
+														destination["id"] = core_id;
+														destination["workload_id"] = workload["workload_id"];
+														destination["layer_name"] = layert.name();
+
+														if(ofmapid[prev_workload_id].count(intersect)){
+															workload_list[from_id][prev_wlid]["ofmap"][ofmapid[prev_workload_id][intersect]]["destination"].append(destination);
+														}
+														else{
+															Json::Value ofmap;
+															ofmap["lower"].append(intersect.b.from);
+															ofmap["lower"].append(intersect.c.from);
+															ofmap["lower"].append(intersect.h.from);
+															ofmap["lower"].append(intersect.w.from);
+
+															ofmap["upper"].append(intersect.b.to-1);
+															ofmap["upper"].append(intersect.c.to-1);
+															ofmap["upper"].append(intersect.h.to-1);
+															ofmap["upper"].append(intersect.w.to-1);
+
+															ofmap["transfer_id"] = ifmap["transfer_id"];
+															ofmap["size"] = intersect.size()*8;
+
+															ofmap["destination"].append(destination);
+															ofmapid[prev_workload_id][intersect] = workload_list[from_id][prev_wlid]["ofmap"].size();
+															workload_list[from_id][prev_wlid]["ofmap"].append(ofmap);
+														}
+													}
+												}
+											}
+										}
+									}
 								}
+							}
+							else{
+								int lower_c, upper_c;
+								lower_c = std::max(0, (int)input_range.c.from - (int)real_prev_channel_offset);
+								upper_c = std::min((int)node.layer().ofmap_shape().c, (int)input_range.c.to - (int)real_prev_channel_offset);
+								if(lower_c < upper_c){
+									Json::Value related_ifmap;
+									Json::Value ifmap;
+									ifmap["lower"].append(input_range.b.from);
+									ifmap["lower"].append(lower_c);
+									ifmap["lower"].append(input_range.h.from);
+									ifmap["lower"].append(input_range.w.from);
 
+									ifmap["upper"].append(input_range.b.to-1);
+									ifmap["upper"].append(upper_c-1);
+									ifmap["upper"].append(input_range.h.to-1);
+									ifmap["upper"].append(input_range.w.to-1);
+
+									ifmap["channel"].append(real_prev_channel_offset + lower_c);
+									ifmap["channel"].append(real_prev_channel_offset + upper_c-1);
+
+									vol_t ifmap_size = 1;
+									for(int i=0; i<4; ++i){
+										ifmap_size *= ifmap["upper"][i].asUInt() - ifmap["lower"][i].asUInt() + 1;
+									}
+									ifmap["size"] = ifmap_size * 8;
+
+									ifmap["type"] = "DRAM";
+									ifmap["id"] = 0;
+									ifmap["layer_name"] = node.name();
+
+									Json::Value key;
+									key["lower"] = ifmap["lower"];
+									key["upper"] = ifmap["upper"];
+									key["source_layer_name"] = node.name();
+									key["destination_layer_name"] = layert.name();
+									key["type"] = layert.getIfmPrevs().contains(layerno) ? "ifmap" : "weight";
+
+									tfid_t ofmap_transfer_id;
+
+									if(DRAM_ofmap_pos.count(key)){
+										ofmap_transfer_id = DRAM["out"][DRAM_ofmap_pos[key]]["transfer_id"].asUInt();
+									}
+									else{
+										ofmap_transfer_id = transferid_cnt++;
+									}
+
+									for(auto prev_part: lnode->get_place_sch().getOfmL()){
+										for(len_t prev_batch_offset=0; prev_batch_offset<tot_batch; prev_batch_offset += lnode->num_batch){
+										for(len_t prev_b_coor=0; prev_b_coor<lnode->tileSch.tile_part.B; ++prev_b_coor){
+											for(len_t prev_c_coor=0; prev_c_coor<lnode->tileSch.tile_part.K; ++prev_c_coor){
+												for(len_t prev_h_coor=0; prev_h_coor<lnode->tileSch.tile_part.H; ++prev_h_coor){
+													for(len_t prev_w_coor=0; prev_w_coor<lnode->tileSch.tile_part.W; ++prev_w_coor){	
+														auto fraction = [](len_t n, len_t d, len_t coor){
+															return n*coor/d;
+														};
+														fmap_range prev_range = prev_part.first, range_size = prev_range;
+														prev_range.b.from=fraction(lnode->num_batch,lnode->tileSch.tile_part.B,prev_b_coor);
+														prev_range.b.to=fraction(lnode->num_batch,lnode->tileSch.tile_part.B,prev_b_coor+1);
+														prev_range.c.from=fraction(range_size.c.size(),lnode->tileSch.tile_part.K,prev_c_coor);
+														prev_range.c.to=fraction(range_size.c.size(),lnode->tileSch.tile_part.K,prev_c_coor+1);
+														prev_range.h.from=fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_c_coor);
+														prev_range.h.to=fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_c_coor+1);
+														prev_range.w.from=fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_c_coor);
+														prev_range.w.to=fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_c_coor+1);
+														Cluster::xyid_t from_id = Cluster::get_xyid(prev_part.second);
+														prev_range.b += prev_batch_offset;
+														prev_range.c += real_prev_channel_offset;
+															/*if(layert.name() == "encoder1_QK" && !layert.getIfmPrevs().contains(layerno))
+															{
+																printf("prev_range_from = %d %d %d %d\n",prev_range.b.from,prev_range.c.from,prev_range.h.from,prev_range.w.from);
+																printf("prev_range_to = %d %d %d %d\n",prev_range.b.to,prev_range.c.to,prev_range.h.to,prev_range.w.to);
+																printf("input_range_from = %d %d %d %d\n",input_range.b.from,input_range.c.from,input_range.h.from,input_range.w.from);
+																printf("input_range_to = %d %d %d %d\n",input_range.b.to,input_range.c.to,input_range.h.to,input_range.w.to);
+																printf("batch_offset = %d\n\n",batch_offset);
+															}*/
+															fmap_range intersect = input_range.intersect(prev_range);
+															if(intersect.is_empty())
+																continue;
+															prev_range.c -= real_prev_channel_offset;
+															intersect.c -= real_prev_channel_offset;
+															tfid_t transfer_id;
+
+															jsonindex_t prev_wlid = wlid[from_id][layerno][{prev_range.b.from,prev_range.c.from,prev_range.h.from,prev_range.w.from}];
+															wlid_t prev_workload_id = workload_list[from_id][prev_wlid]["workload_id"].asUInt();
+															if(layert.getIfmPrevs().contains(layerno)){
+																max_from_workload_id = std::max(max_from_workload_id, prev_workload_id);
+															}
+															else{
+																weight_max_from_workload_id = std::max(weight_max_from_workload_id, prev_workload_id);
+															}
+															//max_prev_wlid = std::max(max_prev_wlid, prev_workload_id);
+															Json::Value destination;
+															destination["type"] = "DRAM";
+															destination["id"] = 0;
+															destination["layer_name"] = layert.name();
+
+															Json::Value source;
+															source["lower"].append(prev_range.b.from);
+															source["lower"].append(prev_range.c.from);
+															source["lower"].append(prev_range.h.from);
+															source["lower"].append(prev_range.w.from);
+
+															source["upper"].append(prev_range.b.to-1);
+															source["upper"].append(prev_range.c.to-1);
+															source["upper"].append(prev_range.h.to-1);
+															source["upper"].append(prev_range.w.to-1);
+															source["core_id"] = from_id;
+															source["workload_id"] = prev_workload_id;
+
+															if(ofmapid[prev_workload_id].count(prev_range)){
+																transfer_id = workload_list[from_id][prev_wlid]["ofmap"][ofmapid[prev_workload_id][prev_range]]["transfer_id"].asUInt();
+																source["transfer_id"] = transfer_id;
+																if(!SchNode::to_dram[prev_workload_id]){
+																	workload_list[from_id][prev_wlid]["ofmap"][ofmapid[prev_workload_id][prev_range]]["destination"].append(destination);
+																	SchNode::to_dram[prev_workload_id] = true;
+																	DRAM_ifmap_pos[transfer_id] = DRAM["in"].size();
+																	DRAM["in"].append(source);
+																}
+
+															}
+															else{
+																transfer_id = transferid_cnt++;
+																source["transfer_id"] = transfer_id;
+																Json::Value ofmap;
+																ofmap["lower"] = source["lower"];
+																ofmap["upper"] = source["upper"];
+																ofmap["destination"].append(destination);
+																ofmap["transfer_id"] = transfer_id;
+																ofmap["size"] = prev_range.size() * 8;
+																SchNode::to_dram[workload_list[from_id][prev_wlid]["workload_id"].asUInt()] = true;
+																ofmapid[prev_workload_id][prev_range] = workload_list[from_id][prev_wlid]["ofmap"].size();
+																workload_list[from_id][prev_wlid]["ofmap"].append(ofmap);
+																DRAM_ifmap_pos[transfer_id] = DRAM["in"].size();
+																DRAM["in"].append(source);
+															}
+															if(!DRAM["in"][DRAM_ifmap_pos[transfer_id]]["related_ofmap_map"].isMember(std::to_string(ofmap_transfer_id))){
+																DRAM["in"][DRAM_ifmap_pos[transfer_id]]["related_ofmap"].append(ofmap_transfer_id);
+																DRAM["in"][DRAM_ifmap_pos[transfer_id]]["related_ofmap_map"][std::to_string(ofmap_transfer_id)] = true;
+															}
+															related_ifmap.append(transfer_id);
+														}
+													}
+												}
+											}
+										}
+									}
+									Json::Value destination;
+									destination["id"] = core_id;
+									destination["type"] = "core";
+									destination["workload_id"] = workload["workload_id"];
+
+									if(DRAM_ofmap_pos.count(key)){
+										DRAM["out"][DRAM_ofmap_pos[key]]["destination"].append(destination);
+									}
+									else{
+										DRAM_ofmap_pos[key] = DRAM["out"].size();
+										Json::Value ofmap;
+										ofmap["lower"] = key["lower"];
+										ofmap["upper"] = key["upper"];
+										ofmap["layer_name"] = layert.name();
+										ofmap["size"] = ifmap["size"];
+										ofmap["transfer_id"] = ofmap_transfer_id;
+										ofmap["destination"].append(destination);
+										ofmap["related_ifmap"] = related_ifmap;
+										ofmap["type"] = "fmap";
+										DRAM["out"].append(ofmap);
+									}
+									ifmap["transfer_id"] = ofmap_transfer_id;
+									if(layert.getIfmPrevs().contains(layerno)){
+										workload["ifmap"]["transfer_id"].append(ofmap_transfer_id);
+										workload["ifmap_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
+									}
+									else{
+										workload["weight"]["transfer_id"].append(ofmap_transfer_id);
+										workload["weight_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
+									}
+
+								}
+							}
+							if(layert.getIfmPrevs().contains(layerno)){
+								prev_channel_offset += network->getNode(layerno).layer().ofmap_shape().c;
+							}
+							//fprintf(stderr,"layerno = %d, add = %d\n", layerno, network->getNode(layerno).layer().ofmap_shape().c);
+							if(REF_IS_INSTANCE(layert.layer(), EltwiseLayer)){
+								auto eltlayer = dynamic_cast<const EltwiseLayer*>(&(layert.layer()));
+								prev_channel_offset %= eltlayer->get_workload().K;
+
+							}
+						}
+
+						workload["ifmap"]["max_workload_id"] = max_from_workload_id;
+						if(layert.hasWgtPrevs()){
+							workload["weight"]["max_workload_id"] = weight_max_from_workload_id;
+						}
+
+						if(prev.count() == 0){
+							Json::Value ifmap;
+							ifmap["lower"].append(ofmap_range.b.from);
+							ifmap["lower"].append(ofmap_range.c.from);
+							ifmap["lower"].append(ofmap_range.h.from);
+							ifmap["lower"].append(ofmap_range.w.from);
+
+							ifmap["upper"].append(ofmap_range.b.to-1);
+							ifmap["upper"].append(ofmap_range.c.to-1);
+							ifmap["upper"].append(ofmap_range.h.to-1);
+							ifmap["upper"].append(ofmap_range.w.to-1);
+
+							ifmap["channel"].append(ofmap_range.c.from);
+							ifmap["channel"].append(ofmap_range.c.to-1);
+							ifmap["size"] = ofmap_range.size() * 8;
+
+							ifmap["layer_name"] = "input";
+							ifmap["id"] = 0;
+							ifmap["type"] = "DRAM";
+
+							Json::Value key;
+							key["source_layer_name"] = "input";
+							key["destination_layer_name"] = layert.name();
+							key["lower"] = ifmap["lower"];
+							key["upper"] = ifmap["upper"];
+
+							tfid_t transfer_id;
+							if(DRAM_ofmap_pos.count(key)){
+								transfer_id = DRAM["out"][DRAM_ofmap_pos[key]]["transfer_id"].asUInt();
 							}
 							else{
 								transfer_id = transferid_cnt++;
-								source["transfer_id"] = transfer_id;
-								Json::Value ofmap;
-								ofmap["lower"] = source["lower"];
-								ofmap["upper"] = source["upper"];
-								ofmap["destination"].append(destination);
-								ofmap["transfer_id"] = transfer_id;
-								ofmap["size"] = prev_range.size() * 8;
-								SchNode::to_dram[workload_list[from_id][prev_wlid]["workload_id"].asUInt()] = true;
-								ofmapid[prev_workload_id][prev_range] = workload_list[from_id][prev_wlid]["ofmap"].size();
-								workload_list[from_id][prev_wlid]["ofmap"].append(ofmap);
-								DRAM_ifmap_pos[transfer_id] = DRAM["in"].size();
-								DRAM["in"].append(source);
 							}
-							if(!DRAM["in"][DRAM_ifmap_pos[transfer_id]]["related_ofmap_map"].isMember(std::to_string(ofmap_transfer_id))){
-								DRAM["in"][DRAM_ifmap_pos[transfer_id]]["related_ofmap"].append(ofmap_transfer_id);
-								DRAM["in"][DRAM_ifmap_pos[transfer_id]]["related_ofmap_map"][std::to_string(ofmap_transfer_id)] = true;
+							ifmap["transfer_id"] = transfer_id;
+							workload["ifmap_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
+							Json::Value destination;
+							destination["id"] = core_id;
+							destination["type"] = "core";
+							destination["workload_id"] = workload["workload_id"];
+
+							if(DRAM_ofmap_pos.count(key)){
+								DRAM["out"][DRAM_ofmap_pos[key]]["destination"].append(destination);
 							}
-							related_ifmap.append(transfer_id);
+							else{
+								DRAM_ofmap_pos[key] = DRAM["out"].size();
+								Json::Value input;
+								input["transfer_id"] = transfer_id;
+								input["layer_name"] = layert.name();
+								input["related_ifmap"] = empty_list;
+								input["destination"].append(destination);
+								input["size"] = ifmap["size"];
+								input["lower"] = ifmap["lower"];
+								input["upper"] = ifmap["upper"];
+								input["type"] = "fmap";
+								DRAM["out"].append(input);
+							}
+							workload["ifmap"]["transfer_id"].append(transfer_id);
 						}
-					}
-					Json::Value destination;
-					destination["id"] = core_id;
-					destination["type"] = "core";
-					destination["workload_id"] = workload["workload_id"];
+						if(next.count() == 0){
+							Json::Value ofmap;
+							ofmap["lower"].append(range.b.from);
+							ofmap["lower"].append(range.c.from);
+							ofmap["lower"].append(range.h.from);
+							ofmap["lower"].append(range.w.from);
 
-					if(DRAM_ofmap_pos.count(key)){
-						DRAM["out"][DRAM_ofmap_pos[key]]["destination"].append(destination);
-					}
-					else{
-						DRAM_ofmap_pos[key] = DRAM["out"].size();
-						Json::Value ofmap;
-						ofmap["lower"] = key["lower"];
-						ofmap["upper"] = key["upper"];
-						ofmap["layer_name"] = layert.name();
-						ofmap["size"] = ifmap["size"];
-						ofmap["transfer_id"] = ofmap_transfer_id;
-						ofmap["destination"].append(destination);
-						ofmap["related_ifmap"] = related_ifmap;
-						ofmap["type"] = "fmap";
-						DRAM["out"].append(ofmap);
-					}
-					ifmap["transfer_id"] = ofmap_transfer_id;
-					if(layert.getIfmPrevs().contains(layerno)){
-						workload["ifmap"]["transfer_id"].append(ofmap_transfer_id);
-						workload["ifmap_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
-					}
-					else{
-						workload["weight"]["transfer_id"].append(ofmap_transfer_id);
-						workload["weight_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
-					}
+							ofmap["upper"].append(range.b.to-1);
+							ofmap["upper"].append(range.c.to-1);
+							ofmap["upper"].append(range.h.to-1);
+							ofmap["upper"].append(range.w.to-1);
 
-				}
-			}
-			if(layert.getIfmPrevs().contains(layerno)){
-				prev_channel_offset += network->getNode(layerno).layer().ofmap_shape().c;
-			}
-			//fprintf(stderr,"layerno = %d, add = %d\n", layerno, network->getNode(layerno).layer().ofmap_shape().c);
-			if(REF_IS_INSTANCE(layert.layer(), EltwiseLayer)){
-				auto eltlayer = dynamic_cast<const EltwiseLayer*>(&(layert.layer()));
-				prev_channel_offset %= eltlayer->get_workload().K;
+							ofmap["size"] = range.size() * 8;
+							ofmap["transfer_id"] = transferid_cnt++;
 
-			}
-		}
+							Json::Value destination;
+							destination["type"] = "DRAM";
+							destination["id"] = 0;
+							destination["layer_name"] = "output";
+							ofmap["destination"].append(destination);
+							workload["ofmap"].append(ofmap);
 
-		workload["ifmap"]["max_workload_id"] = max_from_workload_id;
-		if(layert.hasWgtPrevs()){
-			workload["weight"]["max_workload_id"] = weight_max_from_workload_id;
-		}
+							Json::Value output;
+							output["lower"] = ofmap["lower"];
+							output["upper"] = ofmap["upper"];
+							output["core_id"] = core_id;
+							output["related_ofmap"] = empty_list;
+							output["workload_id"] = workload["workload_id"];
+							output["transfer_id"] = ofmap["transfer_id"];
 
-		if(prev.count() == 0){
-			Json::Value ifmap;
-			ifmap["lower"].append(ofmap_range.b.from);
-			ifmap["lower"].append(ofmap_range.c.from);
-			ifmap["lower"].append(ofmap_range.h.from);
-			ifmap["lower"].append(ofmap_range.w.from);
-
-			ifmap["upper"].append(ofmap_range.b.to-1);
-			ifmap["upper"].append(ofmap_range.c.to-1);
-			ifmap["upper"].append(ofmap_range.h.to-1);
-			ifmap["upper"].append(ofmap_range.w.to-1);
-
-			ifmap["channel"].append(ofmap_range.c.from);
-			ifmap["channel"].append(ofmap_range.c.to-1);
-			ifmap["size"] = ofmap_range.size() * 8;
-
-			ifmap["layer_name"] = "input";
-			ifmap["id"] = 0;
-			ifmap["type"] = "DRAM";
-
-			Json::Value key;
-			key["source_layer_name"] = "input";
-			key["destination_layer_name"] = layert.name();
-			key["lower"] = ifmap["lower"];
-			key["upper"] = ifmap["upper"];
-
-			tfid_t transfer_id;
-			if(DRAM_ofmap_pos.count(key)){
-				transfer_id = DRAM["out"][DRAM_ofmap_pos[key]]["transfer_id"].asUInt();
-			}
-			else{
-				transfer_id = transferid_cnt++;
-			}
-			ifmap["transfer_id"] = transfer_id;
-			workload["ifmap_temp"][layert.name()+"_"+std::to_string(range.b.from)]["source"].append(ifmap);
-			Json::Value destination;
-			destination["id"] = core_id;
-			destination["type"] = "core";
-			destination["workload_id"] = workload["workload_id"];
-
-			if(DRAM_ofmap_pos.count(key)){
-				DRAM["out"][DRAM_ofmap_pos[key]]["destination"].append(destination);
-			}
-			else{
-				DRAM_ofmap_pos[key] = DRAM["out"].size();
-				Json::Value input;
-				input["transfer_id"] = transfer_id;
-				input["layer_name"] = layert.name();
-				input["related_ifmap"] = empty_list;
-				input["destination"].append(destination);
-				input["size"] = ifmap["size"];
-				input["lower"] = ifmap["lower"];
-				input["upper"] = ifmap["upper"];
-				input["type"] = "fmap";
-				DRAM["out"].append(input);
-			}
-			workload["ifmap"]["transfer_id"].append(transfer_id);
-		}
-		if(next.count() == 0){
-			Json::Value ofmap;
-			ofmap["lower"].append(range.b.from);
-			ofmap["lower"].append(range.c.from);
-			ofmap["lower"].append(range.h.from);
-			ofmap["lower"].append(range.w.from);
-
-			ofmap["upper"].append(range.b.to-1);
-			ofmap["upper"].append(range.c.to-1);
-			ofmap["upper"].append(range.h.to-1);
-			ofmap["upper"].append(range.w.to-1);
-
-			ofmap["size"] = range.size() * 8;
-			ofmap["transfer_id"] = transferid_cnt++;
-
-			Json::Value destination;
-			destination["type"] = "DRAM";
-			destination["id"] = 0;
-			destination["layer_name"] = "output";
-			ofmap["destination"].append(destination);
-			workload["ofmap"].append(ofmap);
-
-			Json::Value output;
-			output["lower"] = ofmap["lower"];
-			output["upper"] = ofmap["upper"];
-			output["core_id"] = core_id;
-			output["related_ofmap"] = empty_list;
-			output["workload_id"] = workload["workload_id"];
-			output["transfer_id"] = ofmap["transfer_id"];
-
-			DRAM["in"].append(output);
-		}
-
-		bool to_other_core = false;
-
-		FOR_BITSET(layerno, next){
-			const Node& node = network->getNode(layerno);
-			const LNode* lnode = root->get_lnode_by_id(layerno);
-			len_t next_channel_offset = 0;
-			const Bitset& prev_set = node.getIfmPrevs();
-			if(lnode->layert.getIfmPrevs().contains(layerid)){
-				FOR_BITSET(lid, prev_set){
-					if(lid != layerid){
-						next_channel_offset += network->getNode(lid).layer().ofmap_shape().c;
-					}
-					else{
-						break;
-					}
-				}
-			}
-			if(REF_IS_INSTANCE(node.layer(), EltwiseLayer)){
-				auto eltlayer = dynamic_cast<const EltwiseLayer*>(&(node.layer()));
-				next_channel_offset %= eltlayer->get_workload().K;
-			}
-			if(lnode->get_dirp_set().contains(layerid)){
-				for(auto next_part: lnode->get_place_sch().getOfmL()){
-					for(len_t next_batch_offset=0; next_batch_offset<tot_batch; next_batch_offset += lnode->num_batch){
-						Cluster::xyid_t to_id = Cluster::get_xyid(next_part.second);
-						fmap_range next_range = next_part.first;
-						if(next_range.is_empty()) continue;
-						next_range.b += next_batch_offset;
-						if(lnode->getLayer().getIfmPrevs().contains(layerid)){
-							node.layer().ofm_to_ifm(next_range);
+							DRAM["in"].append(output);
 						}
-						else{
-							node.layer().ofm_to_wgt(next_range);
+
+						bool to_other_core = false;
+
+						FOR_BITSET(layerno, next){
+							const Node& node = network->getNode(layerno);
+							const LNode* lnode = root->get_lnode_by_id(layerno);
+							len_t next_channel_offset = 0;
+							const Bitset& prev_set = node.getIfmPrevs();
+							if(lnode->layert.getIfmPrevs().contains(layerid)){
+								FOR_BITSET(lid, prev_set){
+									if(lid != layerid){
+										next_channel_offset += network->getNode(lid).layer().ofmap_shape().c;
+									}
+									else{
+										break;
+									}
+								}
+							}
+							if(REF_IS_INSTANCE(node.layer(), EltwiseLayer)){
+								auto eltlayer = dynamic_cast<const EltwiseLayer*>(&(node.layer()));
+								next_channel_offset %= eltlayer->get_workload().K;
+							}
+							if(lnode->get_dirp_set().contains(layerid)){
+								for(auto next_part: lnode->get_place_sch().getOfmL()){
+									for(len_t next_batch_offset=0; next_batch_offset<tot_batch; next_batch_offset += lnode->num_batch){
+										Cluster::xyid_t to_id = Cluster::get_xyid(next_part.second);
+										fmap_range next_range = next_part.first;
+										if(next_range.is_empty()) continue;
+										next_range.b += next_batch_offset;
+										if(lnode->getLayer().getIfmPrevs().contains(layerid)){
+											node.layer().ofm_to_ifm(next_range);
+										}
+										else{
+											node.layer().ofm_to_wgt(next_range);
+										}
+										range.c += next_channel_offset;
+										fmap_range intersect = range.intersect(next_range);
+										range.c -= next_channel_offset;
+										if(intersect.is_empty())
+											continue;
+										if(to_id != core_id){
+											to_other_core = true;
+										}
+										Json::Value buffer;
+										buffer["type"] = lnode->getLayer().getIfmPrevs().contains(layerid) ? "ifmap" : "weight";
+										if(!lnode->getLayer().getIfmPrevs().contains(layerid))
+											buffer["from_core"] = true;
+										buffer["layer"] = node.layer().get_name();
+										buffer["lower"].append(next_range.b.from);
+										buffer["lower"].append(next_range.c.from);
+										buffer["lower"].append(next_range.h.from);
+										buffer["lower"].append(next_range.w.from);
+										buffer["upper"].append(next_range.b.to-1);
+										buffer["upper"].append(next_range.c.to-1);
+										buffer["upper"].append(next_range.h.to-1);
+										buffer["upper"].append(next_range.w.to-1);
+										buffer["block"] = ((next_range.size() + 1023) >> 10);
+										curr_ifmap[to_id].insert(buffer);
+									}
+								}
+							}
 						}
-						range.c += next_channel_offset;
-						fmap_range intersect = range.intersect(next_range);
-						range.c -= next_channel_offset;
-						if(intersect.is_empty())
-							continue;
-						if(to_id != core_id){
-							to_other_core = true;
+
+						len_t batch_size = 0;
+						Json::Value weight;
+						if(REF_IS_INSTANCE(layert.layer(), ConvLayer) && !layert.hasWgtPrevs()){
+							if(root->get_type() != NodeType::L){
+								batch_size = tot_batch/dynamic_cast<const Cut*>(root)->get_num_bgrp();
+							}
+							else{
+								batch_size = tot_batch;
+							}
+							weight["type"] = "weight";
+							weight["layer"] = layert.name();
+							weight["lower"] = range.c.from;
+							weight["upper"] = range.c.to - 1;
+							ConvLayer::Workload wl = static_cast<const ConvLayer&>(layert.layer()).get_workload();
+							Json::Value source;
+							source["size"] = wl.R * wl.S * wl.C * range.c.size() * 8;
+							weight["block"] = (source["size"].asUInt() / 8 + 1023) >> 10;
+							source["id"] = 0;
+							source["type"] = "DRAM";
+							source["lower"] = weight["lower"];
+							source["upper"] = weight["upper"];
+							source["transfer_id"] = workload["weight"]["transfer_id"][0u];
+							weight["source"].append(source);
+							weight["transfer_id"].append(workload["weight"]["transfer_id"]);
+							if(batch_offset % batch_size == 0){
+								curr_weight[core_id].insert(weight);
+								if(workload_list[core_id].size() && get_lca(this, root->get_lnode_by_id(name_to_id[workload_list[core_id][workload_list[core_id].size()-1]["layer_name"].asString()])) != root){
+									if(workload_list[core_id][workload_list[core_id].size()-1]["layer_name"] != layert.name()){
+										workload_list[core_id][workload_list[core_id].size()-1]["buffer"].append(weight);
+									}
+								}
+							}
 						}
-						Json::Value buffer;
-						buffer["type"] = lnode->getLayer().getIfmPrevs().contains(layerid) ? "ifmap" : "weight";
-						if(!lnode->getLayer().getIfmPrevs().contains(layerid))
-							buffer["from_core"] = true;
-						buffer["layer"] = node.layer().get_name();
-						buffer["lower"].append(next_range.b.from);
-						buffer["lower"].append(next_range.c.from);
-						buffer["lower"].append(next_range.h.from);
-						buffer["lower"].append(next_range.w.from);
-						buffer["upper"].append(next_range.b.to-1);
-						buffer["upper"].append(next_range.c.to-1);
-						buffer["upper"].append(next_range.h.to-1);
-						buffer["upper"].append(next_range.w.to-1);
-						buffer["block"] = ((next_range.size() + 1023) >> 10);
-						curr_ifmap[to_id].insert(buffer);
+
+						for(const Json::Value& datablock : curr_ifmap[core_id]){
+							workload["buffer"].append(datablock);
+						}
+						for(const Json::Value& weight : curr_weight[core_id]){
+							workload["buffer"].append(weight);
+						}
+						if(to_other_core || to_dram){
+							Json::Value ofmap;
+							ofmap["type"] = "ofmap";
+							ofmap["layer"] = layert.name();
+							ofmap["lower"].append(range.b.from);
+							ofmap["lower"].append(range.c.from);
+							ofmap["lower"].append(range.h.from);
+							ofmap["lower"].append(range.w.from);
+							ofmap["upper"].append(range.b.to-1);
+							ofmap["upper"].append(range.c.to-1);
+							ofmap["upper"].append(range.h.to-1);
+							ofmap["upper"].append(range.w.to-1);
+							//ofmap["block"] = (range.size() + 10239) / 10240;
+							ofmap["block"] = 10;
+							ofmap["size"] = range.size() * 8;
+							workload["buffer"].append(ofmap);
+						}
+
+						wlid[core_id][layerid][(BCHW_coor){range.b.from,range.c.from,range.h.from,range.w.from}] = workload_list[core_id].size();
+
+						workload_list[core_id].append(workload);
+
+						std::vector<Json::Value> this_workload_ifmap;
+						for(const Json::Value& ifmap: curr_ifmap[core_id]){
+							if(ifmap["layer"] == layert.name() && ifmap["lower"][0u] == range.b.from){
+								this_workload_ifmap.push_back(ifmap);
+							}
+						}
+						for(const Json::Value& ifmap: this_workload_ifmap){
+							curr_ifmap[core_id].erase(ifmap);
+						}
+						if(REF_IS_INSTANCE(layert.layer(), ConvLayer) && !layert.hasWgtPrevs()){
+							if((batch_offset + num_batch) % batch_size == 0){
+								for(auto weight : curr_weight[core_id]){
+									if(weight["layer"] == layert.name()){
+										curr_weight[core_id].erase(weight);
+										break;
+									}
+								}
+							}
+						}
+						ofmapid.resize(workload_cnt);
+						from_core.push_back(from_other_core);
+						weight_from_core.push_back(weight_from_other_core);
+						SchNode::to_dram.push_back(false);
 					}
 				}
 			}
 		}
-
-		len_t batch_size = 0;
-		Json::Value weight;
-		if(REF_IS_INSTANCE(layert.layer(), ConvLayer) && !layert.hasWgtPrevs()){
-			if(root->get_type() != NodeType::L){
-				batch_size = tot_batch/dynamic_cast<const Cut*>(root)->get_num_bgrp();
-			}
-			else{
-				batch_size = tot_batch;
-			}
-			weight["type"] = "weight";
-			weight["layer"] = layert.name();
-			weight["lower"] = range.c.from;
-			weight["upper"] = range.c.to - 1;
-			ConvLayer::Workload wl = static_cast<const ConvLayer&>(layert.layer()).get_workload();
-			Json::Value source;
-			source["size"] = wl.R * wl.S * wl.C * range.c.size() * 8;
-			weight["block"] = (source["size"].asUInt() / 8 + 1023) >> 10;
-			source["id"] = 0;
-			source["type"] = "DRAM";
-			source["lower"] = weight["lower"];
-			source["upper"] = weight["upper"];
-			source["transfer_id"] = workload["weight"]["transfer_id"][0u];
-			weight["source"].append(source);
-			weight["transfer_id"].append(workload["weight"]["transfer_id"]);
-			if(batch_offset % batch_size == 0){
-				curr_weight[core_id].insert(weight);
-				if(workload_list[core_id].size() && get_lca(this, root->get_lnode_by_id(name_to_id[workload_list[core_id][workload_list[core_id].size()-1]["layer_name"].asString()])) != root){
-					if(workload_list[core_id][workload_list[core_id].size()-1]["layer_name"] != layert.name()){
-						workload_list[core_id][workload_list[core_id].size()-1]["buffer"].append(weight);
-					}
-				}
-			}
-		}
-
-		for(const Json::Value& datablock : curr_ifmap[core_id]){
-			workload["buffer"].append(datablock);
-		}
-		for(const Json::Value& weight : curr_weight[core_id]){
-			workload["buffer"].append(weight);
-		}
-		if(to_other_core || to_dram){
-			Json::Value ofmap;
-			ofmap["type"] = "ofmap";
-			ofmap["layer"] = layert.name();
-			ofmap["lower"].append(range.b.from);
-			ofmap["lower"].append(range.c.from);
-			ofmap["lower"].append(range.h.from);
-			ofmap["lower"].append(range.w.from);
-			ofmap["upper"].append(range.b.to-1);
-			ofmap["upper"].append(range.c.to-1);
-			ofmap["upper"].append(range.h.to-1);
-			ofmap["upper"].append(range.w.to-1);
-			//ofmap["block"] = (range.size() + 10239) / 10240;
-			ofmap["block"] = 10;
-			ofmap["size"] = range.size() * 8;
-			workload["buffer"].append(ofmap);
-		}
-
-		wlid[core_id][layerid][(BCHW_coor){range.b.from,range.c.from,range.h.from,range.w.from}] = workload_list[core_id].size();
-
-		workload_list[core_id].append(workload);
-
-		std::vector<Json::Value> this_workload_ifmap;
-		for(const Json::Value& ifmap: curr_ifmap[core_id]){
-			if(ifmap["layer"] == layert.name() && ifmap["lower"][0u] == range.b.from){
-				this_workload_ifmap.push_back(ifmap);
-			}
-		}
-		for(const Json::Value& ifmap: this_workload_ifmap){
-			curr_ifmap[core_id].erase(ifmap);
-		}
-		if(REF_IS_INSTANCE(layert.layer(), ConvLayer) && !layert.hasWgtPrevs()){
-			if((batch_offset + num_batch) % batch_size == 0){
-				for(auto weight : curr_weight[core_id]){
-					if(weight["layer"] == layert.name()){
-						curr_weight[core_id].erase(weight);
-						break;
-					}
-				}
-			}
-		}
-		ofmapid.resize(workload_cnt);
-		from_core.push_back(from_other_core);
-		weight_from_core.push_back(weight_from_other_core);
-		SchNode::to_dram.push_back(false);
 	}
 }
 
