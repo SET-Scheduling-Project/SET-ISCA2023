@@ -102,6 +102,16 @@ int main(int argc, char** argv){
 	}*/
 
 	std::cin >> mm >> nn >> bb >> xx >> yy >> ss >> rr >> ff >> bw;
+	/*
+		mm: 0: polarcore 1: eyeriss core
+		nn: network options
+		bb: batch size
+		xx*yy: core number
+		ss: zig-zag width
+		rr: number of iterations / number of layers
+		ff: evaluation function
+		bw: bandwidth (in ??) 
+	*/
 	// mm=0;nn=2;bb=64;xx=8;yy=8;ss=4;rr=100;ff=1;bw=24;
 
 	if(argc > 1) IR_name = argv[1];
@@ -126,7 +136,7 @@ int main(int argc, char** argv){
 
 	// Set NoC properties:
 	// Only use unicast in NoC
-	NoC::unicast_only = true;
+	NoC::unicast_only = false;
 
 	StdLayerEngine engine(cMapper);
 	SchNode::layerMapper = &engine;
@@ -184,6 +194,10 @@ int main(int argc, char** argv){
 	case 12:
 		network = &PNASNet;
 		net_name="pnas";
+		break;
+	case 13:
+		network = &inception_resnet_block;
+		net_name="ires_block";
 		break;
 	default:
 		assert(false);

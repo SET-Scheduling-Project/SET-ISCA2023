@@ -8,6 +8,7 @@ extern const Network darknet19;
 extern const Network googlenet;
 
 extern const Network inception_resnet_v1;
+extern const Network inception_resnet_block;
 
 extern const Network resnet50;
 extern const Network resnet101;

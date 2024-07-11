@@ -1,5 +1,5 @@
 CXX      := g++
-CXXFLAGS := -Wall -Wextra -O3 --std=c++17
+CXXFLAGS := -Wall -Wextra --std=c++17
 LDFLAGS  := -L/usr/lib -lstdc++ -lm -lpthread
 BUILD    := ./build
 OBJ_DIR  := $(BUILD)/objects
@@ -36,7 +36,7 @@ build:
 debug: CXXFLAGS += -DDEBUG -g
 debug: all
 
-#release: CXXFLAGS += -O3
+release: CXXFLAGS += -O3
 release: all
 
 perf: CXXFLAGS += -g
@@ -52,3 +52,15 @@ info:
 	@echo "[*] Sources:         ${SRC}         "
 	@echo "[*] Objects:         ${OBJECTS}     "
 	@echo "[*] Dependencies:    ${DEPENDENCIES}"
+
+TOOLS_SRC := $(wildcard ir_tools/*.cpp)
+JSON_SRC  := $(filter src/json/%.cpp, $(SRC))
+JSON_OBJ  := $(JSON_SRC:%.cpp=$(OBJ_DIR)/%.o)
+TOOLS     := $(TOOLS_SRC:ir_tools/%.cpp=$(APP_DIR)/%)
+
+tools: build $(TOOLS)
+
+$(TOOLS): $(APP_DIR)/%: $(OBJ_DIR)/ir_tools/%.o $(JSON_OBJ)
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+	

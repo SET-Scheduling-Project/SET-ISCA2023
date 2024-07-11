@@ -185,9 +185,17 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				for(len_t h_coor=0; h_coor<tileSch.tile_part.H; ++h_coor){
 					for(len_t w_coor=0; w_coor<tileSch.tile_part.W; ++w_coor){
 						auto fraction = [](len_t n, len_t d, len_t coor){
-															return n*coor/d;
-														};
+							return n*coor/d;
+						};
 						fmap_range range = part.first, range_size = range;
+						range.b.from=range_size.b.from+fraction(num_batch,tileSch.tile_part.B,b_coor);
+						range.b.to=range_size.b.from+fraction(num_batch,tileSch.tile_part.B,b_coor+1);
+						range.c.from=range_size.c.from+fraction(range_size.c.size(),tileSch.tile_part.K,c_coor);
+						range.c.to=range_size.c.from+fraction(range_size.c.size(),tileSch.tile_part.K,c_coor+1);
+						range.h.from=range_size.h.from+fraction(range_size.h.size(),tileSch.tile_part.H,h_coor);
+						range.h.to=range_size.h.from+fraction(range_size.h.size(),tileSch.tile_part.H,h_coor+1);
+						range.w.from=range_size.w.from+fraction(range_size.w.size(),tileSch.tile_part.W,w_coor);
+						range.w.to=range_size.w.from+fraction(range_size.w.size(),tileSch.tile_part.W,w_coor+1);
 						if(range.is_empty()) continue;
 
 						range.b += batch_offset;
@@ -329,10 +337,10 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 														prev_range.b.to=range_size.b.from+fraction(lnode->num_batch,lnode->tileSch.tile_part.B,prev_b_coor+1);
 														prev_range.c.from=range_size.c.from+fraction(range_size.c.size(),lnode->tileSch.tile_part.K,prev_c_coor);
 														prev_range.c.to=range_size.c.from+fraction(range_size.c.size(),lnode->tileSch.tile_part.K,prev_c_coor+1);
-														prev_range.h.from=range_size.h.from+fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_c_coor);
-														prev_range.h.to=range_size.h.from+fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_c_coor+1);
-														prev_range.w.from=range_size.w.from+fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_c_coor);
-														prev_range.w.to=range_size.w.from+fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_c_coor+1);
+														prev_range.h.from=range_size.h.from+fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_h_coor);
+														prev_range.h.to=range_size.h.from+fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_h_coor+1);
+														prev_range.w.from=range_size.w.from+fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_w_coor);
+														prev_range.w.to=range_size.w.from+fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_w_coor+1);
 														Cluster::xyid_t from_id = Cluster::get_xyid(prev_part.second);
 														prev_range.b += prev_batch_offset;
 														prev_range.c += real_prev_channel_offset;
@@ -502,10 +510,10 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 														prev_range.b.to=fraction(lnode->num_batch,lnode->tileSch.tile_part.B,prev_b_coor+1);
 														prev_range.c.from=fraction(range_size.c.size(),lnode->tileSch.tile_part.K,prev_c_coor);
 														prev_range.c.to=fraction(range_size.c.size(),lnode->tileSch.tile_part.K,prev_c_coor+1);
-														prev_range.h.from=fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_c_coor);
-														prev_range.h.to=fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_c_coor+1);
-														prev_range.w.from=fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_c_coor);
-														prev_range.w.to=fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_c_coor+1);
+														prev_range.h.from=fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_h_coor);
+														prev_range.h.to=fraction(range_size.h.size(),lnode->tileSch.tile_part.H,prev_h_coor+1);
+														prev_range.w.from=fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_w_coor);
+														prev_range.w.to=fraction(range_size.w.size(),lnode->tileSch.tile_part.W,prev_w_coor+1);
 														Cluster::xyid_t from_id = Cluster::get_xyid(prev_part.second);
 														prev_range.b += prev_batch_offset;
 														prev_range.c += real_prev_channel_offset;
