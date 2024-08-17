@@ -850,8 +850,8 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 							ofmap["upper"].append(range.c.to-1);
 							ofmap["upper"].append(range.h.to-1);
 							ofmap["upper"].append(range.w.to-1);
-							//ofmap["block"] = (range.size() + 10239) / 10240;
-							ofmap["block"] = 10;
+							ofmap["block"] = (range.size() + 1023) / 1024;
+							//ofmap["block"] = 10;
 							ofmap["size"] = range.size() * 8;
 							workload["buffer"].append(ofmap);
 						}
