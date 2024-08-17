@@ -6,6 +6,8 @@
 
 #include "util.h"
 
+#define MAX_BUF MAX_CHIPS
+
 class Node;
 //#include "network.h"
 

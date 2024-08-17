@@ -8,7 +8,6 @@
 #include "schnode.h"
 #include "util.h"
 
-
 struct LayerScheme{
 	// Total cost.
 	SchNode::SchCost totCost, coreCost;

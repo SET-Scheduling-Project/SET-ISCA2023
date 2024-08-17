@@ -15,7 +15,6 @@ class MemLayout;
 //#include "datalayout.h"
 //#include "memlayout.h"
 
-
 class NoC{
 public:
 	typedef vol_t hop_t;

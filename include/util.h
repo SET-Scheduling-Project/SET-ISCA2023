@@ -135,6 +135,14 @@ struct fmap_range{
 	friend std::ostream& operator<<(std::ostream& os, const fmap_range& range);
 };
 
+// a specific bchw point for workload locating
+struct BCHW_coor{
+	len_t b,c,h,w;
+	len_t coor[4];
+	BCHW_coor(const std::initializer_list<len_t> &l);
+	bool operator<(const BCHW_coor &other) const;
+};
+
 //int divceil(int m, int n);
 /*
 enum class LoopType : std::uint8_t{

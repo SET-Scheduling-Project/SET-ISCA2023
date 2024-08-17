@@ -212,3 +212,17 @@ int divceil(int m, int n) {
 	return (m - 1) / n + 1;
 }
 */
+
+BCHW_coor::BCHW_coor(const std::initializer_list<len_t>& l){
+	assert(l.size()==4);
+	int p=0;
+	for(auto &c:l){
+		coor[p]=c;
+		++p;
+	}
+	b=coor[0],c=coor[1],h=coor[2],w=coor[3];
+}
+
+bool BCHW_coor::operator<(const BCHW_coor& other) const{
+    return std::vector<len_t>{b,c,h,w}<std::vector<len_t>{other.b,other.c,other.h,other.w};
+}

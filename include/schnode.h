@@ -27,7 +27,6 @@ namespace Json{
 //#include "layerengine.h"
 //#include "json/json.h"
 
-
 class LNode;
 class Cut;
 
@@ -133,7 +132,8 @@ protected:
 
 	static wlid_t workload_cnt;
 	static tfid_t transferid_cnt;
-	static std::vector<std::vector<std::vector<jsonindex_t> > > wlid;
+	//static std::vector<std::vector<std::vector<jsonindex_t> > > wlid;
+	static std::vector<std::vector<std::map<BCHW_coor,SchNode::jsonindex_t> > > wlid;
 	static std::vector<bool> from_core, weight_from_core, to_dram;
 	static std::vector<std::map<fmap_range, jsonindex_t> > ofmapid;
 	static std::vector<std::set<Json::Value> > curr_ifmap;
