@@ -1,9 +1,9 @@
 #include "coremapping.h"
 
 #include <cassert>
-#include <string>
+
 #include "partition.h"
-#include "util.h"
+
 
 #define HLEN(num_ol) (wl.H + (wl.R - wl.sH)*(num_ol))
 #define WLEN(num_ol) (wl.W + (wl.S - wl.sW)*(num_ol))
@@ -57,6 +57,16 @@ void CoreMapper::set_lr_utime(LRLayer& l) const{
 
 void CoreMapper::set_part(int _num_part){
 	num_part = _num_part;
+}
+
+vol_t CoreMapper::buffer_size(vol_t ofm_size) const {
+	// Double buffer
+	if(num_part > 0){
+		if(num_part <= 2) return ofm_size;
+		return DIVCEIL(ofm_size, num_part) * 2;
+	}
+	vol_t usize = 2 * (-num_part);
+	return MIN(ofm_size, usize);
 }
 
 len_t CoreMapper::K_hint() const {

@@ -1,10 +1,11 @@
 #include "datalayout.h"
 
-#include "bufferusage.h"
-
 #include <algorithm>
-#include <cassert>
 #include <cstring>
+
+#include "bufferusage.h"
+#include "partition.h"
+
 
 void DataLayout::update(const fmap_range& range){
 	vol_t s = range.size();
@@ -59,6 +60,20 @@ UniqueLayout::Iterator UniqueLayout::end() const{
 	return Iterator(*this, len);
 }
 
+bool UniqueLayout::update_ofm(BufferUsage& usage, const PartSch& tile_part) const {
+	dataLen_t totL = totLength();
+	// When partitioning into two parts, double buffer = full buffer.
+	bool no_part = (tile_part.size() <= 2);
+	for(dataLen_t i = 0; i < totL; ++i){
+		UniqueEntry ent = (*this)[i];
+		vol_t s = no_part ? ent.range.size() : (2 * tile_part.usize(ent.range));
+		if(s == 0) continue;
+		s *= multFactor;
+		if(!usage.add(ent.tile, s)) return false;
+	}
+	return true;
+}
+
 DataLayout::dataLen_t UniqueLayout::totLength() const{
 	return len;
 }
@@ -69,7 +84,7 @@ DataLayout::dataLen_t UniqueLayout::rangeLength() const{
 
 DataLayout::Entry UniqueLayout::at(dataLen_t idx) const{
 	UniqueEntry u = (*this)[idx];
-	return {u.range, &u.tile, 1, u.divN};
+	return {u.range, &u.tile, 1/*, u.divN*/};
 }
 
 StdDataLayout::StdDataLayout(dataLen_t _len, pos_t* _posArr)
@@ -119,13 +134,13 @@ DataLayout::dataLen_t StdDataLayout::rangeLength() const{
 }
 
 DataLayout::Entry StdDataLayout::at(dataLen_t idx) const{
-	if(bcast_len == 1) return {rangeArr[idx], posArr + idx, 1, 1};
-	return {rangeArr[idx], &contPosArr[idx*bcast_len], bcast_len, 1};
+	if(bcast_len == 1) return {rangeArr[idx], posArr + idx, 1/*, 1*/};
+	return {rangeArr[idx], &contPosArr[idx*bcast_len], bcast_len/*, 1*/};
 }
 
 DataLayout::UniqueEntry StdDataLayout::operator[](dataLen_t idx) const{
-	if(bcast_len == 1) return {rangeArr[idx], posArr[idx], 1};
-	return {rangeArr[idx/bcast_len], contPosArr[idx], 1};
+	if(bcast_len == 1) return {rangeArr[idx], posArr[idx]/*, 1*/};
+	return {rangeArr[idx/bcast_len], contPosArr[idx]/*, 1*/};
 }
 
 void StdDataLayout::setCPosArr(){
@@ -204,7 +219,7 @@ void StdULayout::setDims(dataLen_t C, dataLen_t B, dataLen_t H, dataLen_t W){
 }
 
 DataLayout::UniqueEntry StdULayout::operator[](dataLen_t idx) const{
-	return {rangeArr[idx], posArr[idx], 1};
+	return {rangeArr[idx], posArr[idx]/*, 1*/};
 }
 
 StdULayout::IntersectIter StdULayout::get_intersect(const fmap_range& range, bool noBatch) const{

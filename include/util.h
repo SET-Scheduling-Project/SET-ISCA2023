@@ -6,6 +6,8 @@
 #include <functional>
 #include <limits>
 #include <iostream>
+#include <string>
+
 
 #define MAX_CHIPS 258
 
@@ -42,37 +44,32 @@ DEF_MAX(bw);
 typedef double cost_t;
 DEF_MAX(cost);
 
+typedef std::uint16_t lid_t;
+
 typedef std::int16_t cidx_t;
 
+// The index of DRAM / port / interleave group.
+typedef std::uint8_t didx_t;
+
 typedef std::int8_t mlen_t;
-#define IO_INT8_
 
 // The unit time of one layer (one core && one batch).
 typedef double utime_t;
 
 // The bitwidth of data (in bits).
 typedef std::uint8_t bwidth_t;
-#define IO_UINT8_
 
 #undef DEF_MAX_
 #undef DEF_MAX
 
-#ifdef IO_INT8_
-#undef IO_INT8_
 std::istream& operator>>(std::istream& in, std::int8_t& num);
 std::ostream& operator<<(std::ostream& out, const std::int8_t& num);
-#endif
 
-#ifdef IO_UINT8_
-#undef IO_UINT8_
 std::istream& operator>>(std::istream& in, std::uint8_t& num);
 std::ostream& operator<<(std::ostream& out, const std::uint8_t& num);
-#endif
 
 
 // Function, struct and global variables definition.
-
-extern vol_t ofm_ubuf_vol;
 
 extern std::function<cost_t(energy_t, cycle_t)> cost_func;
 
@@ -90,6 +87,7 @@ struct pos_t{
 	bool operator<=(const pos_t& other) const;
 	bool operator>=(const pos_t& other) const;
 	bool operator!=(const pos_t& other) const;
+	std::string to_string() const;
 	friend std::ostream& operator<<(std::ostream& os, const pos_t& pos);
 };
 

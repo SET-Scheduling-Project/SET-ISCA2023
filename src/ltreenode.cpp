@@ -2,6 +2,9 @@
 
 #include <cassert>
 
+#include "network.h"
+
+
 LTreeNode::LTreeNode(const Bitset& _layer_set, len_t _num_batch, LTreeNode *_parent, NodeType _t)
 	:t((_t == NodeType::L&&_layer_set.count()>1)?(_parent->t == NodeType::S? NodeType::T : NodeType::S):_t),
 	 isNewNode(true), parent(_parent), layer_set(_layer_set), num_batch(_num_batch){

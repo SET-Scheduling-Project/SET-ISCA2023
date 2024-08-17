@@ -1,9 +1,7 @@
 #include "util.h"
 
 #include <cassert>
-#include <iostream>
 
-vol_t ofm_ubuf_vol;
 
 cost_t default_cost(energy_t energy, cycle_t time){
 	return energy * time;
@@ -71,6 +69,15 @@ bool pos_t::operator>=(const pos_t& other) const{
 
 bool pos_t::operator!=(const pos_t& other) const{
 	return x!=other.x || y!=other.y;
+}
+
+std::string pos_t::to_string() const {
+	std::string m = "(";
+	m += std::to_string(x);
+	m += ",";
+	m += std::to_string(y);
+	m += ")";
+	return m;
 }
 
 std::ostream& operator<<(std::ostream& os, const pos_t& pos){

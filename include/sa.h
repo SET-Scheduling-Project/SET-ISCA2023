@@ -1,14 +1,19 @@
 #ifndef SA_H
 #define SA_H
 
-#include "cluster.h"
-#include "ltreenode.h"
-#include "schnode.h"
-
 #include <cstdint>		// std::uint32_t, std::uint64_t
 #include <iostream>		// std::ostream
 #include <random>		// std::mt19937
 #include <sstream>		// std::ostringstream
+
+#include "util.h"
+
+class Cluster;
+class LTreeNode;
+class SchNode;
+//#include "cluster.h"
+//#include "ltreenode.h"
+//#include "schnode.h"
 
 
 struct WholeSch{

@@ -1,10 +1,9 @@
 #include "layerengine.h"
 
 #include <cassert>
-#include <cstring>
 
+#include "network.h"
 #include "partition.h"
-#include "placement.h"
 
 
 StdLayerEngine::StdLayerEngine(CoreMapper* _mapper):mapper(_mapper){}
@@ -91,7 +90,7 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 		initLayouts(placeSch, layerT, ofmShape, B);
 
 		// Estimate buffer usage
-		vol_t estimatedBuf = ofm_ubuf_vol;
+		vol_t estimatedBuf = mapper->buffer_size(placeSch.ofmLayout->maxRange());
 		estimatedBuf += placeSch.ifmLayout->maxRange();
 		estimatedBuf += placeSch.wgtLayout->maxRange();
 		if(estimatedBuf > ubuf.Size) continue;
@@ -117,13 +116,14 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 			placeSch.initPlacement(cluster);
 			static_cast<StdDataLayout&>(placeSch.getIfmL()).setCPosArr();
 			static_cast<StdDataLayout&>(placeSch.getWgtL()).setCPosArr();
-			calcNoC(noc, placeSch, curNode);
+			calcNoC(noc, placeSch, layerSch.memLayouts, curNode);
 			SchNode::SchCost curCostAll = curCost;
 			curCostAll.energy += noc.get_cost();
 			cycle_t nocTime = noc.get_time();
 			curCostAll.time = MAX(curCostAll.time, nocTime);
 			if(curCostAll.cost() < layerSch.totCost.cost()){
 				layerSch.totCost = curCostAll;
+				layerSch.coreCost = curCost;
 				layerSch.extUbufEnergy = ubufTotal;
 				layerSch.tileSch = tileSch;
 				layerSch.place.update(std::move(placeSch));
@@ -141,7 +141,7 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 		static_cast<StdDataLayout&>(layerSch.place.getIfmL()).setCPosArr();
 		static_cast<StdDataLayout&>(layerSch.place.getWgtL()).setCPosArr();
 		layerSch.place.finalize();
-		calcNoC(layerSch.noc, layerSch.place, curNode);
+		calcNoC(layerSch.noc, layerSch.place, layerSch.memLayouts, curNode);
 	}
 	return layerSch;
 }
@@ -235,12 +235,18 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 	delete[] arrs[3];
 }
 
-void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) const{
-	noc.reset();
+void StdLayerEngine::calcNoC(NoC& noc,
+							 const PlaceSch& place,
+							 MemLayouts& memLayouts,
+							 LNode* curNode) const
+{
+	noc.clear();
 	const Node& layerT = curNode->layert;
 	len_t B = curNode->num_batch;
 	bool wgt_B = layerT.hasWgtPrevs();
 	len_t curC;
+
+	memLayouts.iMemLayouts.clear();
 
 	// Fetch weight first.
 	if(wgt_B){
@@ -250,20 +256,23 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 		FOR_BITSET(it, prevs){
 			lid_t prev = it;
 			len_t prevC = network->getNode(prev).layer().ofmap_shape().c;
+			LNode* fromNode = (*(curNode->lnodeList))[prev];
 			if(curNode->get_dirp_set().contains(prev)){
-				LNode* fromNode = (*(curNode->lnodeList))[prev];
 				const auto& fromLayout = fromNode->get_place_sch().getOfmL();
 				noc.betweenLayout(fromLayout, place.getWgtL(), curC, fromNode->num_batch, B);
 			}else{
-				// TODO: Change to last layer's memLayout.
-				noc.fromRemoteMem(place.getWgtL(), curC, curC + prevC);
+				const auto& iMemLayout = fromNode->get_oMemLayout();
+				assert(!iMemLayout.empty());
+				memLayouts.iMemLayouts.push_back(iMemLayout);
+				noc.fromRemoteMem_const(iMemLayout, place.getWgtL(), curC, curC + prevC);
 			}
 			curC += prevC;
 		}
 		assert(curC == layerT.layer().weight_shape().c);
+		memLayouts.wMemLayout.clear();
 	}else{
-		noc.fromRemoteMem(place.getWgtL());
-		noc /= (LNode::tot_batch / B);
+		noc.fromRemoteMem(memLayouts.wMemLayout, place.getWgtL());
+		noc.div(LNode::tot_batch / B);
 	}
 
 	// Identify eltwise first
@@ -274,7 +283,11 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 
 	// Fetch external data from remote MEM
 	curC = layerT.get_external_C();
-	noc.fromRemoteMem(place.getIfmL(), 0, curC);
+	if(curC > 0){
+		MemLayout layout;
+		noc.fromRemoteMem(layout, place.getIfmL(), 0, curC);
+		memLayouts.iMemLayouts.push_back(std::move(layout));
+	}
 	if(elt_K > 0){
 		if(curC == elt_K){
 			curC = 0;
@@ -290,13 +303,15 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 	FOR_BITSET(it, prevs){
 		lid_t prev = it;
 		len_t prevC = network->getNode(prev).layer().ofmap_shape().c;
+		LNode* fromNode = (*(curNode->lnodeList))[prev];
 		if(curNode->get_dirp_set().contains(prev)){
-			LNode* fromNode = (*(curNode->lnodeList))[prev];
 			const auto& fromLayout = fromNode->get_place_sch().getOfmL();
 			noc.betweenLayout(fromLayout, place.getIfmL(), curC, fromNode->num_batch, B);
 		}else{
-			// TODO: Change to last layer's memLayout.
-			noc.fromRemoteMem(place.getIfmL(), curC, curC + prevC);
+			const auto& iMemLayout = fromNode->get_oMemLayout();
+			assert(!iMemLayout.empty());
+			memLayouts.iMemLayouts.push_back(iMemLayout);
+			noc.fromRemoteMem_const(iMemLayout, place.getIfmL(), curC, curC + prevC);
 		}
 		curC += prevC;
 		if(elt_K > 0){
@@ -314,8 +329,96 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 
 	// Save to remote mem if necessary
 	if(curNode->to_dram){
-		noc.toRemoteMem(place.getOfmL());
+		noc.toRemoteMem(place.getOfmL(), memLayouts.oMemLayout);
+	}else{
+		memLayouts.oMemLayout.clear();
 	}
+}
+
+bool StdLayerEngine::updateNoC(LNode* curNode, NoC& old_noc) const {
+	auto& noc = curNode->noc;
+	const auto& place = curNode->place_sch;
+	auto& iMemLayouts = curNode->memLayouts.iMemLayouts;
+	auto mem_it  = iMemLayouts.begin();
+	auto mem_end = iMemLayouts.end();
+	const Node& layerT = curNode->layert;
+	bool wgt_B = layerT.hasWgtPrevs();
+	len_t curC;
+	bool has_update = false;
+
+	const auto update = [&](lid_t prev, const DataLayout& to) -> void {
+		len_t prevC = network->getNode(prev).layer().ofmap_shape().c;
+		LNode* fromNode = (*(curNode->lnodeList))[prev];
+		if(!curNode->get_dirp_set().contains(prev)){
+			const auto& m = fromNode->get_oMemLayout();
+			assert(!m.empty());
+
+			assert(mem_it != mem_end);
+			if(*mem_it != m){
+				if(!has_update){
+					has_update = true;
+					old_noc = noc;
+				}
+				noc.fromRemoteMem_upd(*mem_it, m, to, curC, curC + prevC);
+				*mem_it = m;
+			}
+			++mem_it;
+		}
+		curC += prevC;
+	};
+
+	// Fetch weight first.
+	if(wgt_B){
+		// Fetch each prev layer from its ofmap/mem layout
+		curC = 0;
+		const auto& prevs = layerT.getWgtPrevs();
+		FOR_BITSET(it, prevs){
+			lid_t prev = it;
+			update(prev, place.getWgtL());
+		}
+		assert(curC == layerT.layer().weight_shape().c);
+	}
+
+	// Identify eltwise first
+	len_t elt_K = 0, cur_N = 0;
+	if(REF_IS_INSTANCE(layerT.layer(), EltwiseLayer)){
+		elt_K = layerT.layer().ofmap_shape().c;
+	}
+
+	// Fetch external data from remote MEM
+	curC = layerT.get_external_C();
+	if(curC > 0){
+		++mem_it;
+	}
+	if(elt_K > 0){
+		if(curC == elt_K){
+			curC = 0;
+			++cur_N;
+		}else{
+			// TODO: here we have asserted input_C < elt_K for eltwise layer, so its fine.
+			assert(curC <= elt_K);
+		}
+	}
+
+	// Fetch each prev layer from its ofmap/mem layout
+	const auto& prevs = layerT.getIfmPrevs();
+	FOR_BITSET(it, prevs){
+		lid_t prev = it;
+		update(prev, place.getIfmL());
+		if(elt_K > 0){
+			if(curC == elt_K){
+				curC = 0;
+				++cur_N;
+			}else{
+				// TODO: here we have asserted input_C < elt_K for eltwise layer, so its fine.
+				assert(curC <= elt_K);
+			}
+		}
+	}
+	if(elt_K > 0) curC = elt_K * cur_N;
+	assert(curC == layerT.layer().real_ifmap_shape().c);
+
+	return has_update;
 }
 
 bool LayerScheme::isValid() const{

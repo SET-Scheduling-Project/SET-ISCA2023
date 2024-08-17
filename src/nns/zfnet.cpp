@@ -1,5 +1,6 @@
 #include "nns/nns.h"
 
+
 const Network zfnet = []{
 	Network n;
 	InputData input("input", fmap_shape(3, 224));

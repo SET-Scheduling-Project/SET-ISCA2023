@@ -23,7 +23,7 @@ static std::string fmt(const char* format, ...) {
 	return s;
 }
 
-static Network::lid_t Stem(Network& n) {
+static lid_t Stem(Network& n) {
 	InputData input("input", fmap_shape(3, 299));
 	n.add(NLAYER("Conv_1a_3x3", Conv, C=3, K=32, R=3, H=149, sH=2), {}, 0, {input});
 	n.add(NLAYER("Conv_2a_3x3", Conv, C=32, R=3, H=147));
@@ -34,7 +34,7 @@ static Network::lid_t Stem(Network& n) {
 	return n.add(NLAYER("Conv_4b_3x3", Conv, C=192, K=256, H=35, R=3, sH=2));
 }
 
-static Network::lid_t Inception_Resnet_A(Network& n, Network::lid_t lastid, int block_no) {
+static lid_t Inception_Resnet_A(Network& n, lid_t lastid, int block_no) {
 	auto branch1 = n.add(NLAYER(fmt("A%d_Conv_1a_1x1",block_no), Conv, C=256, K=32, H=35));
 	n.add(NLAYER(fmt("A%d_Conv_2a_1x1",block_no), Conv, C=256, K=32, H=35), {lastid});
 	auto branch2 = n.add(NLAYER(fmt("A%d_Conv_2b_3x3",block_no), Conv, C=32, K=32, H=35, R=3));
@@ -45,7 +45,7 @@ static Network::lid_t Inception_Resnet_A(Network& n, Network::lid_t lastid, int 
 	return n.add(NLAYER(fmt("A%d_Eltwise",block_no), Eltwise, N=2, K=256, H=35), {lastid, conv4});
 }
 
-static Network::layer_set Reduction_A(Network& n, Network::lid_t lastid){
+static Network::layer_set Reduction_A(Network& n, lid_t lastid){
 	auto branch1 = n.add(NLAYER("RA_Conv_1a_3x3", Conv, C=256, K=384, H=17, R=3, sH=2));
 	n.add(NLAYER("RA_Conv_2a_1x1", Conv, C=256, K=192, H=35), {lastid});
 	n.add(NLAYER("RA_Conv_2b_3x3", Conv, C=192, K=192, H=35, R=3));
@@ -54,7 +54,7 @@ static Network::layer_set Reduction_A(Network& n, Network::lid_t lastid){
 	return {branch1, branch2, branch3};
 }
 
-static Network::lid_t Inception_Resnet_B(Network& n, Network::layer_set prev_layer, int block_no){
+static lid_t Inception_Resnet_B(Network& n, Network::layer_set prev_layer, int block_no){
 	auto branch1 = n.add(NLAYER(fmt("B%d_Conv_1a_1x1", block_no), Conv, C=896, K=128, H=17), prev_layer);
 	n.add(NLAYER(fmt("B%d_Conv_2a_1x1",block_no), Conv, C=896, K=128, H=17), prev_layer);
 	n.add(NLAYER(fmt("B%d_Conv_2b_1x7",block_no), Conv, C=128, K=128, H=17, R=1, S=7));
@@ -64,7 +64,7 @@ static Network::lid_t Inception_Resnet_B(Network& n, Network::layer_set prev_lay
 	return n.add(NLAYER(fmt("B%d_Eltwise", block_no), Eltwise, N=2, K=896, H=17), prev_layer);
 }
 
-static Network::layer_set Reduction_B(Network& n, Network::lid_t lastid){
+static Network::layer_set Reduction_B(Network& n, lid_t lastid){
 	auto branch1 = n.add(NLAYER("RB_MaxPool_1a_3x3", Pooling, K=896, H=8, R=3, sH=2));
 	n.add(NLAYER("RB_Conv_2a_1x1", Conv, C=896, K=256, H=17), {lastid});
 	auto branch2 = n.add(NLAYER("RB_Conv_2b_3x3", Conv, C=256, K=384, H=8, R=3, sH=2));
@@ -76,7 +76,7 @@ static Network::layer_set Reduction_B(Network& n, Network::lid_t lastid){
 	return {branch1,branch2,branch3,branch4};
 }
 
-static Network::lid_t Inception_Resnet_C(Network& n, Network::layer_set prev_layer, int block_no){
+static lid_t Inception_Resnet_C(Network& n, Network::layer_set prev_layer, int block_no){
 	auto branch1 = n.add(NLAYER(fmt("C%d_Conv_1a_1x1",block_no), Conv, C=1792, K=192, H=8), prev_layer);
 	n.add(NLAYER(fmt("C%d_Conv_2a_1x1",block_no), Conv, C=1792, K=192, H=8), prev_layer);
 	n.add(NLAYER(fmt("C%d_Conv_2b_1x3",block_no), Conv, C=192, K=192, H=8, R=1, S=3));
@@ -88,7 +88,7 @@ static Network::lid_t Inception_Resnet_C(Network& n, Network::layer_set prev_lay
 
 const Network inception_resnet_v1 = []{
 	Network n;
-	Network::lid_t last_id = Stem(n);
+	lid_t last_id = Stem(n);
 	for (int i=1; i<=5; ++i) {
 		last_id = Inception_Resnet_A(n, last_id, i);
 	}

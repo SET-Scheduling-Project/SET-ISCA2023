@@ -1,5 +1,6 @@
 #include "nns/nns.h"
 
+
 static void concat(Network::layer_set& layers, const Network::layer_set& suffix){
 	layers.insert(layers.end(), suffix.begin(), suffix.end());
 }
@@ -22,7 +23,7 @@ static Network::layer_set addReLUConvBN(
 		len_t C_in, len_t C_out, len_t kernel_size,
 		len_t stride, len_t H_in, len_t H_out,
 		Network::layer_set prevs){
-	Network::lid_t prev;
+	lid_t prev;
 	n.add(NLAYER(name + "_relu", PTP, K=C_in, H=H_in), prevs);
 	prev = n.add(NLAYER(name + "_conv", Conv, C=C_in, K=C_out, R=kernel_size, H=H_out, sH=stride));
 	// BatchNorm here.
@@ -33,7 +34,7 @@ static Network::layer_set addFactorizedReduce(
 		Network& n, const std::string& name,
 		len_t C_in, len_t C_out, len_t H_in, len_t H_out,
 		Network::layer_set prevs){
-	Network::lid_t prev, l1, l2;
+	lid_t prev, l1, l2;
 	prev = n.add(NLAYER(name + "_relu", PTP, K=C_in, H=H_in), prevs);
 	// These two convs have different padding, cannot merge.
 	l1 = n.add(NLAYER(name + "_conv1", Conv, C=C_in, K=C_out/2, R=1, H=H_out, sH=2));
@@ -90,7 +91,7 @@ static void addCell(
 		Network::layer_set out1, out2;
 		out1 = add_op(stepName + "a", 2*i);
 		concat(out1, add_op(stepName + "b", 2*i+1));
-		Network::lid_t out;
+		lid_t out;
 		out = n.add(NLAYER(name + "_elt_" + std::to_string(i), Eltwise, N=2, K=C, H=H_out), out1);
 		states.push_back({out});
 	}
@@ -106,7 +107,7 @@ static void addCell(
 }
 
 static Network genNAS(const Genotype& geno, len_t C, len_t nClasses, unsigned nCells){
-	Network::lid_t prev;
+	lid_t prev;
 	Network n;
 	len_t H_prev, H_in;
 	H_in = 331;
@@ -200,7 +201,7 @@ typedef Genotype::entry entry;
 static Network::layer_set addSepConv(Network& n, const std::string& name, Network::layer_set prevs,
 									 len_t C_in, len_t C_out, len_t stride, len_t H_in, len_t H_out, len_t kernel_size){
 	// SepConv(C_in, C_out, 3, stride, 1, affine=affine);
-	Network::lid_t prev;
+	lid_t prev;
 	n.add(NLAYER(name + "_relu", PTP, K=C_in, H=H_in), prevs);
 	n.add(NLAYER(name + "_conv1", GroupConv, C=C_in, K=C_in, G=C_in, H=H_out, R=kernel_size, sH=stride));
 	n.add(NLAYER(name + "_conv2", Conv, C=C_in, K=C_out, R=1, H=H_out));
@@ -230,7 +231,7 @@ static Network::layer_set sep_conv_7x7(Network& n, const std::string& name, Netw
 static Network::layer_set max_pool_3x3(Network& n, const std::string& name, Network::layer_set prevs,
 									   len_t C_in, len_t C_out, len_t stride, len_t H_in, len_t H_out){
 	(void) H_in;
-	Network::lid_t prev;
+	lid_t prev;
 	prev = n.add(NLAYER(name + "_mp3_pool", Pooling, K=C_in, H=H_out, R=3, sH=stride), prevs);
 	if(C_in == C_out) return {prev};
 	prev = n.add(NLAYER(name + "_mp3_conv", Conv, C=C_in, K=C_out, R=1, H=H_out));

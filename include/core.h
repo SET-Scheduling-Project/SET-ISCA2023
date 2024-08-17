@@ -10,7 +10,9 @@
 #define CORE_H
 
 #include <cstdint>
+
 #include "util.h"
+
 
 class Core{
 public:

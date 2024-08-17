@@ -31,6 +31,7 @@ HEADERS += \
     include/layer.h \
     include/layerengine.h \
     include/ltreenode.h \
+    include/memlayout.h \
     include/network.h \
     include/nns/nns.h \
     include/noc.h \
@@ -54,6 +55,7 @@ SOURCES += \
     src/layerengine.cpp \
     src/ltreenode.cpp \
     src/main.cpp \
+    src/memlayout.cpp \
     src/network.cpp \
     src/nns/alexnet.cpp \
     src/nns/darknet19.cpp \

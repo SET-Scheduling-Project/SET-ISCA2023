@@ -1,9 +1,10 @@
 #include "network.h"
 
 #include <cassert>
-#include <iostream>
 #include <stdexcept>
+
 #include "coremapping.h"
+
 
 const Network* network=nullptr;
 
@@ -61,7 +62,7 @@ void Node::ifm_to_prev_ofm(fmap_range& ifm_rng) const{
 
 }
 */
-void Node::add_next(Node::lid_t l){
+void Node::add_next(lid_t l){
 	nexts.set(l);
 }
 
@@ -92,7 +93,7 @@ void Network::err_eltwise(const std::string& lname, const len_t from_C, const le
 	throw std::logic_error("Eltwise ifmap channel mismatch.");
 }
 
-Network::lid_t Network::add(const Layer* l, const layer_set& ifmPrevs, bwidth_t width, std::vector<InputData> ext_data, const layer_set& wgtPrevs){
+lid_t Network::add(const Layer* l, const layer_set& ifmPrevs, bwidth_t width, std::vector<InputData> ext_data, const layer_set& wgtPrevs){
 	// If no prevs indicated, use default_bs.
 	bool default_prev = (ext_data.empty() && ifmPrevs.empty());
 	lid_t last_id=0;
@@ -197,7 +198,7 @@ const Node& Network::getNode(lid_t id) const{
 	return layers[id];
 }
 
-const Node& Network::operator[](Network::lid_t id) const{
+const Node& Network::operator[](lid_t id) const{
 	return layers[id];
 }
 
@@ -237,7 +238,7 @@ void Network::set_utime(const CoreMapper& mapper) const{
 	}
 }
 
-Network::lid_t Network::len() const{
+lid_t Network::len() const{
 	return static_cast<lid_t>(layers.size());
 }
 

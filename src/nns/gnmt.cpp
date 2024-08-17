@@ -1,12 +1,13 @@
 #include "nns/nns.h"
 
+
 // GNMT Block.
-static Network::lid_t gnmt_blk(
-	const std::string& name, Network& n, Network::lid_t xin, len_t len
+static lid_t gnmt_blk(
+	const std::string& name, Network& n, lid_t xin, len_t len
 ){
 	InputData Cin(name+"_cin", fmap_shape(len, 1));
 	InputData Hin(name+"_hin", fmap_shape(len, 1));
-	Network::lid_t f_id, i_id, cand_id, o_id, fout_id, iout_id, cout_id, hout_id;
+	lid_t f_id, i_id, cand_id, o_id, fout_id, iout_id, cout_id, hout_id;
 
 	f_id = n.add(NLAYER(name+"_f", FC, C=2*len, K=len), {xin}, 0, {Hin});
 	i_id = n.add(NLAYER(name+"_i", FC, C=2*len, K=len), {xin}, 0, {Hin});
@@ -24,7 +25,7 @@ static Network::lid_t gnmt_blk(
 static Network gen_lstm(int nblocks, bool has_res, int len = 1000){
 	Network n;
 	InputData input("input", fmap_shape(len, 1));
-	Network::lid_t xin, next_xin;
+	lid_t xin, next_xin;
 
 	xin = n.add(NLAYER("word_embed", PTP, K=len, H=1), {}, 0, {input});
 

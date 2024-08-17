@@ -19,7 +19,7 @@ static int add_dblock(Network& network, int incp_id, int& sfmap, int num_layers,
     return fmap_in;
 }
 
-static Network::lid_t add_trans(Network& network, int trans_id, int& fmap_in, int& sfmap, Network::layer_set prevs){
+static lid_t add_trans(Network& network, int trans_id, int& fmap_in, int& sfmap, Network::layer_set prevs){
     std::string pfx = std::string("trans_") + std::to_string(trans_id) + "_";
     network.add(NLAYER((pfx + "1x1").c_str(), Conv, C=fmap_in, K=fmap_in/2, H=sfmap, R=1), prevs);
     auto ret = network.add(NLAYER((pfx + "pool").c_str(), Pooling, K=fmap_in/2, H=sfmap/2, R=2));

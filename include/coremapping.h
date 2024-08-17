@@ -98,6 +98,7 @@ public:
 	virtual ~CoreMapper() = default;
 
 	void set_part(int _num_part);
+	vol_t buffer_size(vol_t ofm_size) const;
 	virtual len_t K_hint() const;
 };
 
@@ -205,6 +206,5 @@ public:
 	virtual vol_t get_ubuf_size() const override;
 	// virtual ~EyerissMapper() override = default;
 };
+
 #endif // COREMAPPING_H
-
-

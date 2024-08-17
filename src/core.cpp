@@ -2,6 +2,7 @@
 
 #include <cassert>
 
+
 Core::Core(numMac_t _mac_num, numMac_t _LR_mac_num, energy_t _LR_mac_cost):
 	mac_num(_mac_num), LR_mac_num(_LR_mac_num), LR_mac_cost(_LR_mac_cost){}
 

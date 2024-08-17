@@ -2,8 +2,9 @@
 
 #include <cassert>
 #include <cmath>
-#include <iostream>
+
 #include "network.h"
+
 
 PartEngine::fvec PartEngine::factors[MAX_BUF+1];
 double PartEngine::utils[MAX_BUF+1][MAX_BUF+1];
@@ -134,7 +135,7 @@ PartIter::PartIter(PartSch& partSch, double _min_util)
 	:curSch(partSch), min_util(_min_util), finished(false){}
 
 double PartIter::calc_util(len_t real, len_t part){
-	if(real <= MAX_BUF) return PartEngine::utils[real][part];
+	if(real <= PartEngine::MAX_BUF) return PartEngine::utils[real][part];
 	return static_cast<double>(real)/(DIVCEIL(real, part) * part);
 }
 
@@ -206,6 +207,14 @@ const len_t& PartSch::operator[](std::uint8_t i) const{
 
 vol_t PartSch::size() const{
 	return K*B*H*W;
+}
+
+vol_t PartSch::usize(const fmap_range& range) const {
+	auto totC = range.c.size();
+	auto totB = range.b.size();
+	auto totH = range.h.size();
+	auto totW = range.w.size();
+	return DIVCEIL(totC, K) * DIVCEIL(totB, B) * DIVCEIL(totH, H) * DIVCEIL(totW, W);
 }
 
 std::ostream& operator<<(std::ostream& os, const PartSch& sch){

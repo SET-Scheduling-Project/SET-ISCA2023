@@ -1,12 +1,13 @@
 #include "nns/nns.h"
 
+
 static constexpr int seg_lens_50[] = {3,4,6,3};
 static constexpr int seg_lens_101[] = {3,4,23,3};
 static constexpr int seg_lens_152[] = {3,8,36,3};
 
 // Bottleneck block.
 static void btn_blk(
-	Network& n, Network::lid_t& prev,
+	Network& n, lid_t& prev,
 	int seg, int blk, bool has_br,
 	len_t in_C, len_t mid_C, len_t out_C,
 	len_t H_len, len_t strd=1
@@ -28,7 +29,7 @@ static Network gen_resnet(const int* seg_lens){
 	len_t out_Cs[] = {256,512,1024,2048};
 	len_t init_C = 64;
 
-	Network::lid_t prev;
+	lid_t prev;
 	Network n;
 	InputData input("input", fmap_shape(3,224));
 

@@ -1,13 +1,16 @@
 #ifndef PARTITION_H
 #define PARTITION_H
 
+#include <iostream>
 #include <vector>
+
 #include "util.h"
 
 #define MAX_BUF MAX_CHIPS
 
 class Node;
 //#include "network.h"
+
 
 struct PartSch{
 	// TODO: change to cidx_t.
@@ -18,6 +21,7 @@ struct PartSch{
 	len_t& operator[](std::uint8_t i);
 	const len_t& operator[](std::uint8_t i) const;
 	vol_t size() const;
+	vol_t usize(const fmap_range& range) const;
 	friend std::ostream& operator<<(std::ostream& os, const PartSch& sch);
 };
 
@@ -31,6 +35,7 @@ class PartEngine{
 		factor_t x,y;
 	};
 
+	static constexpr auto MAX_BUF = MAX_CHIPS;
 	static fvec factors[MAX_BUF+1];
 	static double utils[MAX_BUF+1][MAX_BUF+1];
 	double min_util;

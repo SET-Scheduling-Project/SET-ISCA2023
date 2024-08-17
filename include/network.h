@@ -4,12 +4,14 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+
 #include "bitset.h"
 #include "layer.h"
 #include "util.h"
 
 class CoreMapper;
 //#include "coremapping.h"
+
 
 class InputData{
 private:
@@ -44,7 +46,6 @@ class Node{
 	};
 	*/
 public:
-	typedef std::uint16_t lid_t;
 	// Not used, may be used later.
 	typedef std::vector<lid_t> layer_set;
 private:
@@ -77,7 +78,6 @@ public:
 
 class Network{
 public:
-	typedef Node::lid_t lid_t;
 	typedef Node::layer_set layer_set;
 	/*struct link{
 		lid_t from;

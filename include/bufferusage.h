@@ -10,6 +10,7 @@
 
 #include "util.h"
 
+
 // Records the usage of each buffer
 class BufferUsage{
 private:

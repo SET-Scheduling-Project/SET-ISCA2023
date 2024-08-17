@@ -2,17 +2,16 @@
 #define PLACEMENT_H
 
 #include <cstdint>
+#include <iostream>
 #include <memory>
-#include <vector>
-#include <utility>
+
 #include "datalayout.h"
 #include "partition.h"
 #include "util.h"
 
 class Cluster;
 //#include "cluster.h"
-class Node;
-//#include "network.h"
+
 
 struct PlaceSch{
 	PartSch part;
