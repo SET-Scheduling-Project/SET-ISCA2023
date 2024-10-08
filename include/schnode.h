@@ -13,6 +13,7 @@
 #include "bufferusage.h"
 #include "cluster.h"
 #include "coremapping.h"
+#include "dram_ir.h"
 #include "ltreenode.h"
 #include "memlayout.h"
 #include "noc.h"
@@ -24,8 +25,6 @@ class StdLayerEngine;
 namespace Json{
 	class Value;
 };
-//#include "layerengine.h"
-//#include "json/json.h"
 
 class LNode;
 class Cut;
@@ -126,23 +125,16 @@ public:
 
 // **************** Code for IR generation ****************
 protected:
-	typedef std::uint32_t jsonindex_t;
-	typedef std::uint32_t wlid_t;
-	typedef std::uint32_t tfid_t;
-
 	static wlid_t workload_cnt;
 	static tfid_t transferid_cnt;
-	//static std::vector<std::vector<std::vector<jsonindex_t> > > wlid;
-	static std::vector<std::vector<std::map<BCHW_coor,SchNode::jsonindex_t> > > wlid;
+	static std::vector<std::vector<std::map<BCHW_coor,jsonindex_t> > > wlid;
 	static std::vector<bool> from_core, weight_from_core, to_dram;
 	static std::vector<std::map<fmap_range, jsonindex_t> > ofmapid;
 	static std::vector<std::set<Json::Value> > curr_ifmap;
 	static std::vector<std::set<Json::Value> > curr_weight;
 	static std::map<std::string,lid_t> name_to_id;
-	static Json::Value DRAM;
-	static std::map<Json::Value,jsonindex_t> DRAM_ofmap_pos;
-	static std::map<Json::Value,jsonindex_t> DRAM_weight_pos;
-	static std::map<tfid_t,jsonindex_t> DRAM_ifmap_pos;
+	static std::vector<DRAM> DRAM_list;
+	static std::map<Json::Value,tfid_t> DRAM_ofmap_tfid,DRAM_weight_tfid;
 	static csn_ptr root;
 
 public:

@@ -430,6 +430,14 @@ cycle_t NoC::get_dram_time() const{
 	return DIVCEIL(max_DRAM_acc, DRAM_bw);
 }
 
+didx_t NoC::get_dram_num(){
+    return DRAM_num;
+}
+
+didx_t NoC::get_il_group_num(){
+    return il_group_num();
+}
+
 void NoC::unicast(pos_t src, pos_t dst, vol_t size, bool is_add){
 	if(is_add){
 		tot_hops += unicastCalc(src, dst, size);

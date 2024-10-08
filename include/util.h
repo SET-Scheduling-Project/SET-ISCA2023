@@ -59,6 +59,18 @@ typedef double utime_t;
 // The bitwidth of data (in bits).
 typedef std::uint8_t bwidth_t;
 
+// The index of json list.
+typedef std::uint32_t jsonindex_t;
+
+// The index of workload list.
+typedef std::uint32_t wlid_t;
+
+// Transfer ID.
+typedef std::uint32_t tfid_t;
+
+// DRAM ID.
+typedef std::uint16_t dramid_t;
+
 #undef DEF_MAX_
 #undef DEF_MAX
 
@@ -133,6 +145,7 @@ struct fmap_range{
 	fmap_range intersect(const fmap_range& other) const;
 	bool is_empty() const;
 	friend std::ostream& operator<<(std::ostream& os, const fmap_range& range);
+	//fmap_range calc_tile(len_t num_batch, const PartSch& tile_part, ) const;
 };
 
 // a specific bchw point for workload locating
