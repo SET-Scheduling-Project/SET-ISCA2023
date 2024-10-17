@@ -434,8 +434,12 @@ didx_t NoC::get_dram_num(){
     return DRAM_num;
 }
 
-didx_t NoC::get_il_group_num(){
-    return il_group_num();
+didx_t NoC::get_il_group_start_size(){
+    return il_group_start.size();
+}
+
+bool NoC::get_full_interleave(){
+    return full_interleave;
 }
 
 void NoC::unicast(pos_t src, pos_t dst, vol_t size, bool is_add){

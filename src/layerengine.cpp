@@ -282,6 +282,7 @@ void StdLayerEngine::calcNoC(NoC& noc,
 	}
 
 	// Fetch external data from remote MEM
+	memLayouts.extIdx = memLayouts.iMemLayouts.size();
 	curC = layerT.get_external_C();
 	if(curC > 0){
 		MemLayout layout;
@@ -299,6 +300,7 @@ void StdLayerEngine::calcNoC(NoC& noc,
 	}
 
 	// Fetch each prev layer from its ofmap/mem layout
+	memLayouts.ifmIdx = memLayouts.iMemLayouts.size();
 	const auto& prevs = layerT.getIfmPrevs();
 	FOR_BITSET(it, prevs){
 		lid_t prev = it;

@@ -25,6 +25,7 @@ public:
 
 struct MemLayouts{
 	std::vector<MemLayout> iMemLayouts;
+	lid_t extIdx, ifmIdx;
 	MemLayout wMemLayout, oMemLayout;
 };
 

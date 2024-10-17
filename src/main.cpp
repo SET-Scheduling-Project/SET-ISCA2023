@@ -23,7 +23,11 @@
 
 
 int main(int argc, char** argv){
+#ifdef DEBUG
+	unsigned seed = 213;
+#else
 	unsigned seed = std::time(nullptr);
+#endif
 	std::srand(seed);
 	std::cout.precision(4);
 
@@ -112,6 +116,7 @@ int main(int argc, char** argv){
 		bw: bandwidth (in ??) 
 	*/
 	// mm=0;nn=2;bb=64;xx=8;yy=8;ss=4;rr=100;ff=1;bw=24;
+	// 0 13 8 4 4 2 50 1 24
 
 	if(argc > 1) IR_name = argv[1];
 
@@ -360,8 +365,12 @@ int main(int argc, char** argv){
 	// LP
 	search("LP", true, false);
 
+	std::cerr << "LP" << std::endl;
+
 	//LS-opt
 	search("LS-opt", false, true);
+
+	std::cerr << "LS-opt" << std::endl;
 
 	//LSP
 	//search("LSP", true, true);

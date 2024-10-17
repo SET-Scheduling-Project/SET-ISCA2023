@@ -23,12 +23,12 @@ static std::string fmt(const char* format, ...) {
 	return s;
 }
 
-static Network::lid_t Stem(Network& n) {
+static lid_t Stem(Network& n) {
 	InputData input("input", fmap_shape(192, 71));
 	return n.add(NLAYER("Conv_4b_3x3", Conv, C=192, K=256, H=35, R=3, sH=2), {}, 0, {input});
 }
 
-static Network::lid_t Inception_Resnet_A(Network& n, Network::lid_t lastid, int block_no) {
+static lid_t Inception_Resnet_A(Network& n, lid_t lastid, int block_no) {
 	auto branch1 = n.add(NLAYER(fmt("A%d_Conv_1a_1x1",block_no), Conv, C=256, K=32, H=35));
 	n.add(NLAYER(fmt("A%d_Conv_2a_1x1",block_no), Conv, C=256, K=32, H=35), {lastid});
 	auto branch2 = n.add(NLAYER(fmt("A%d_Conv_2b_3x3",block_no), Conv, C=32, K=32, H=35, R=3));

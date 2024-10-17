@@ -116,7 +116,8 @@ public:
 	cycle_t get_time() const;
 	cycle_t get_dram_time() const;
 	static didx_t get_dram_num();
-	static didx_t get_il_group_num();
+	static didx_t get_il_group_start_size();
+	static bool get_full_interleave();
 	
 
 	void unicast(pos_t src, pos_t dst, vol_t size, bool is_add = true);

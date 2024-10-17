@@ -17,6 +17,9 @@ class DRAM{
     void append_weight_destination(const Json::Value& key, const Json::Value& destination);
     void append_ofmap(const Json::Value& key, const Json::Value& ofmap);
     void append_ofmap_destination(const Json::Value& key, const Json::Value& destination);
+    void append_ifmap(tfid_t transfer_id, const Json::Value& ifmap);
+    void append_related_ofmap(tfid_t transfer_id, tfid_t ofmap_transfer_id);
+    void merge_related_ifmap(const Json::Value& key, const Json::Value& related_ifmap);
 };
 
 #endif //DRAM_IR_H

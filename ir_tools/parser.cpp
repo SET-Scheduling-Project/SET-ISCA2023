@@ -65,7 +65,7 @@ int main(int argc, char** argv){
 					}
 					buffer["no"] = no[buffer];
 					if(buffer["type"] != "ofmap"){
-						buffer["newly_added"] = newly_added;
+						buffer["start_loading"] = newly_added;
 					}
 				}
 				for(auto &buffer : last){
