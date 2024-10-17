@@ -156,10 +156,10 @@ Json::Value SchNode::IR_gen() const{
 	for(cidx_t i=0;i<num_cores;++i){
 		for(Json::Value& wl: workload_list[i]){
 			if(wl.isMember("ifmap_temp")){
-				//wl.removeMember("ifmap_temp");
+				wl.removeMember("ifmap_temp");
 			}
 			if(wl.isMember("weight_temp")){
-				//wl.removeMember("weight_temp");
+				wl.removeMember("weight_temp");
 			}
 		}
 		if(workload_list[i].type() != Json::nullValue){
