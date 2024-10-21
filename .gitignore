@@ -84,3 +84,5 @@ build/
 results*/
 *.py
 running/
+
+!post_processing.sh

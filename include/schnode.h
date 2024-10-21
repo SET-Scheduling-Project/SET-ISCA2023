@@ -132,6 +132,7 @@ protected:
 	static std::vector<std::map<fmap_range, jsonindex_t> > ofmapid;
 	static std::vector<std::set<Json::Value> > curr_ifmap;
 	static std::vector<std::set<Json::Value> > curr_weight;
+	static std::set<Json::Value> curr_ofmap;
 	static std::map<std::string,lid_t> name_to_id;
 	static std::vector<DRAM> DRAM_list;
 	static std::map<Json::Value,tfid_t> DRAM_ofmap_tfid,DRAM_weight_tfid;

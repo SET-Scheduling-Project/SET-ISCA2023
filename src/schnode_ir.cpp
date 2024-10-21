@@ -11,6 +11,7 @@ std::vector<std::vector<std::map<BCHW_coor,jsonindex_t> > > SchNode::wlid; // co
 std::vector<bool> SchNode::from_core, SchNode::weight_from_core, SchNode::to_dram;
 std::vector<std::map<fmap_range, jsonindex_t> > SchNode::ofmapid;
 std::vector<std::set<Json::Value> > SchNode::curr_ifmap, SchNode::curr_weight;
+std::set<Json::Value> SchNode::curr_ofmap;
 std::vector<DRAM> SchNode::DRAM_list;
 std::map<Json::Value,tfid_t> SchNode::DRAM_ofmap_tfid,SchNode::DRAM_weight_tfid;
 std::map<std::string,lid_t> SchNode::name_to_id;
@@ -743,6 +744,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 														buffer["layer"] = node.layer().get_name();
 														append_range_bchw(buffer,next_range);
 														append_range_bchw(buffer["ofmap_range"],next_range_ofmap);
+														buffer["block"] = ((next_range.size() + 1023) >> 10);
 														curr_ifmap[to_id].insert(buffer);
 													}
 												}
@@ -793,15 +795,28 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 						for(const Json::Value& weight : curr_weight[core_id]){
 							workload["buffer"].append(weight);
 						}
+						for(const Json::Value& ofmap: curr_ofmap){
+							workload["buffer"].append(ofmap);
+						}
+						curr_ofmap.clear();
 						if(to_other_core || to_dram){
+							const bool last_tile = b_coor==tileSch.tile_part.B-1 &&
+								c_coor==tileSch.tile_part.K-1 &&
+								h_coor==tileSch.tile_part.H-1 &&
+								w_coor==tileSch.tile_part.W-1;
 							Json::Value ofmap;
 							ofmap["type"] = "ofmap";
 							ofmap["layer"] = layert.name();
 							append_range_bchw(ofmap,range);
 							ofmap["block"] = (range.size() + 1023) / 1024;
-							//ofmap["block"] = 10;
 							ofmap["size"] = range.size() * 8;
+							ofmap["start_sending"] = true;
+							ofmap["end_sending"] = last_tile;
 							workload["buffer"].append(ofmap);
+							if(!last_tile){
+								ofmap["end_sending"] = true;
+								curr_ofmap.insert(ofmap);
+							}
 						}
 
 						wlid[core_id][layerid][(BCHW_coor){range.b.from,range.c.from,range.h.from,range.w.from}] = workload_list[core_id].size();

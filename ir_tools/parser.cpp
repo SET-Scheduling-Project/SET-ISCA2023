@@ -50,32 +50,40 @@ int main(int argc, char** argv){
 				++timestamp;
 				for(Json::Value &buffer : wl["buffer"]){
 					bool newly_added = false;
-					if(last.count(buffer)){
-						now[buffer] = last[buffer];
+					auto tmp_buffer=buffer;
+					if(tmp_buffer.isMember("end_sending")){
+						tmp_buffer.removeMember("end_sending");
+					}
+					if(last.count(tmp_buffer)){
+						now[tmp_buffer] = last[tmp_buffer];
 						newly_added = false;
 					}
-					else if(!now.count(buffer)){
-						now[buffer] = timestamp;
-						no[buffer] = blockno++;
+					else if(!now.count(tmp_buffer)){
+						now[tmp_buffer] = timestamp;
+						no[tmp_buffer] = blockno++;
 						newly_added = true;
 					}
 					else{
 						Json::StyledWriter writer;
 						std::cerr << writer.write(buffer);
 					}
-					buffer["no"] = no[buffer];
+					buffer["no"] = no[tmp_buffer];
 					if(buffer["type"] != "ofmap"){
 						buffer["start_loading"] = newly_added;
 					}
 				}
 				for(auto &buffer : last){
-					if(!now.count(buffer.first)){
+					auto tmp_buffer = buffer.first;
+					if(tmp_buffer.isMember("end_sending")){
+						tmp_buffer.removeMember("end_sending");
+					}
+					if(!now.count(tmp_buffer)){
 						Json::Value rect;
 						rect["left"] = buffer.second;
 						rect["right"] = timestamp - 1;
 						rect["size"] = buffer.first["block"];
 						rect["type"] = buffer.first["type"];
-						rect["no"] = no[buffer.first];
+						rect["no"] = no[tmp_buffer];
 						input["rects"].append(rect);
 					}
 				}
@@ -84,13 +92,17 @@ int main(int argc, char** argv){
 			}
 			++timestamp;
 			for(auto &buffer : last){
-				if(!now.count(buffer.first)){
+				auto tmp_buffer = buffer.first;
+				if(tmp_buffer.isMember("end_sending")){
+					tmp_buffer.removeMember("end_sending");
+				}
+				if(!now.count(tmp_buffer)){
 					Json::Value rect;
 					rect["left"] = buffer.second;
 					rect["right"] = timestamp - 1;
 					rect["size"] = buffer.first["block"];
 					rect["type"] = buffer.first["type"];
-					rect["no"] = no[buffer.first];
+					rect["no"] = no[tmp_buffer];
 					input["rects"].append(rect);
 				}
 			}

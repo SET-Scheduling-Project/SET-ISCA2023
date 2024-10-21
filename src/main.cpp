@@ -118,7 +118,7 @@ int main(int argc, char** argv){
 	// mm=0;nn=2;bb=64;xx=8;yy=8;ss=4;rr=100;ff=1;bw=24;
 	// 0 13 8 4 4 2 50 1 24
 
-	if(argc > 1) IR_name = argv[1];
+	if(argc > 1) IR_name = std::string("results/json/") + argv[1];
 
 	std::cout << "Seed: " << seed << std::endl;
 

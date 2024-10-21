@@ -264,7 +264,7 @@ bool is_valid(Solution_t ans){
 					return 0;
 				}
 				if((bi-bj+ans.first)%ans.first<data[j].size){
-					std::cerr << i << " " << j << " " << "C\n";
+					std::cerr << i << " " << j << " " << data[i].no << " " << data[j].no << " " << bi << " " << bj << " " << data.size() << " " << ans.second.size() << " " << "C\n";
 					return 0;
 				}
 			}
