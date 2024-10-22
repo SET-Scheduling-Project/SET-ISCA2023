@@ -20,5 +20,4 @@ do
         done
         ./build/refill $n $ir ${dirname}
     fi
-    break
 done

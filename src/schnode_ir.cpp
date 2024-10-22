@@ -192,7 +192,6 @@ const LNode* Cut::get_lnode_by_id(lid_t id) const{
 }
 
 void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<Json::Value>& workload_list) const{
-	//printf("layer: %s, batch: %d\n", layert.name().c_str(), batch_offset);
 	Json::Value empty_list;
 	empty_list.append(1);
 	empty_list.resize(0);
@@ -779,7 +778,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 							source["transfer_id"] = workload["weight"]["transfer_id"][0u];
 							weight["source"].append(source);
 							weight["transfer_id"].append(workload["weight"]["transfer_id"][0u]);
-							if(batch_offset % batch_size == 0){
+							if(batch_offset % batch_size == 0 && b_coor == 0 && c_coor == 0 && h_coor == 0 && w_coor == 0){
 								curr_weight[core_id].insert(weight);
 								if(workload_list[core_id].size() && get_lca(this, root->get_lnode_by_id(name_to_id[workload_list[core_id][workload_list[core_id].size()-1]["layer_name"].asString()])) != root){
 									if(workload_list[core_id][workload_list[core_id].size()-1]["layer_name"] != layert.name()){
@@ -842,7 +841,11 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 							curr_ifmap[core_id].erase(ifmap);
 						}
 						if(REF_IS_INSTANCE(layert.layer(), ConvLayer) && !layert.hasWgtPrevs()){
-							if((batch_offset + num_batch) % batch_size == 0){
+							if((batch_offset + num_batch) % batch_size == 0 &&
+												b_coor==tileSch.tile_part.B-1 &&
+												c_coor==tileSch.tile_part.K-1 &&
+												h_coor==tileSch.tile_part.H-1 &&
+												w_coor==tileSch.tile_part.W-1){
 								for(auto weight : curr_weight[core_id]){
 									if(weight["layer"] == layert.name()){
 										curr_weight[core_id].erase(weight);
