@@ -7,10 +7,12 @@ const Json::Value& DRAM::get_IR() const{
 void DRAM::append_weight(const Json::Value& key, const Json::Value& weight){
 	weight_pos[key]=IR["out"].size();
 	IR["out"].append(weight);
+	IR["out"][weight_pos[key]]["priority"]=std::min(IR["out"][weight_pos[key]]["priority"].asUInt(),weight["destination"]["workload_id"].asUInt());
 }
 
 void DRAM::append_weight_destination(const Json::Value& key, const Json::Value& destination){
 	IR["out"][weight_pos[key]]["destination"].append(destination);
+	IR["out"][weight_pos[key]]["priority"]=std::min(IR["out"][weight_pos[key]]["priority"].asUInt(),destination["workload_id"].asUInt());
 }
 
 void DRAM::append_ofmap(const Json::Value& key, const Json::Value& ofmap){
@@ -29,11 +31,13 @@ void DRAM::append_ofmap(const Json::Value& key, const Json::Value& ofmap){
 	}
 	ofmap_pos[key]=IR["out"].size();
 	IR["out"].append(ofmap);
+	IR["out"][ofmap_pos[key]]["priority"]=ofmap["destination"]["workload_id"];
 	IR["out"][ofmap_pos[key]]["related_ifmap"]=new_related_ifmap;
 }
 
 void DRAM::append_ofmap_destination(const Json::Value& key, const Json::Value& destination){
 	IR["out"][ofmap_pos[key]]["destination"].append(destination);
+	IR["out"][ofmap_pos[key]]["priority"]=std::min(IR["out"][ofmap_pos[key]]["priority"].asUInt(),destination["workload_id"].asUInt());
 }
 
 void DRAM::append_ifmap(tfid_t transfer_id, const Json::Value& ifmap){

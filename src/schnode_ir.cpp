@@ -509,7 +509,9 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 															}
 															Json::Value destination;
 															destination["type"] = "DRAM";
-															destination["id"] = 0;
+															for(auto ilgroupid: lnode->get_oMemLayout().get_layouts()){
+																destination["id"].append(ilgroupid);
+															}
 															destination["layer_name"] = layert.name();
 
 															Json::Value source;
@@ -609,7 +611,9 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 							ifmap["size"] = ofmap_range.size() * 8;
 
 							ifmap["layer_name"] = "input";
-							ifmap["id"] = 0;
+							for(auto ilgroupid: get_iMemLayouts()[memLayouts.extIdx].get_layouts()){
+								ifmap["id"].append(ilgroupid);
+							}
 							ifmap["type"] = "DRAM";
 
 							Json::Value key;
@@ -659,7 +663,9 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 
 							Json::Value destination;
 							destination["type"] = "DRAM";
-							destination["id"] = 0;
+							for(auto ilgroupid: get_oMemLayout().get_layouts()){
+								destination["id"].append(ilgroupid);
+							}
 							destination["layer_name"] = "output";
 							ofmap["destination"].append(destination);
 							workload["ofmap"].append(ofmap);
@@ -771,7 +777,9 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 							Json::Value source;
 							source["size"] = wl.R * wl.S * wl.C * range.c.size() * 8;
 							weight["block"] = (source["size"].asUInt() / 8 + 1023) >> 10;
-							source["id"] = 0;
+							for(auto ilgroupid: get_wMemLayout().get_layouts()){
+								source["id"].append(ilgroupid);
+							}
 							source["type"] = "DRAM";
 							source["lower"] = weight["lower"];
 							source["upper"] = weight["upper"];
