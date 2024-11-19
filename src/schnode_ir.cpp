@@ -339,11 +339,9 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 								}
 								Json::Value ifmap;
 								append_range_bchw(ifmap,intersect);
-
 								ifmap["channel"].append(real_prev_channel_offset + intersect.c.from);
 								ifmap["channel"].append(real_prev_channel_offset + intersect.c.to-1);
 								ifmap["size"] = intersect.size()*8;
-
 								ifmap["type"] = "core";
 								ifmap["id"] = from_id;
 								ifmap["layer_name"] = node.name();

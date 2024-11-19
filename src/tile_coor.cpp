@@ -21,12 +21,15 @@ TileCoor::Iterator::Iterator(const TileCoor& _tile_coor, len_t _b, len_t _c, len
 TileCoor::Iterator& TileCoor::Iterator::operator++(){
 	++w;
 	if(w==tile_coor.tile_part.W){
+		w=0;
 		++h;
 	}
 	if(h==tile_coor.tile_part.H){
+		h=0;
 		++c;
 	}
 	if(c==tile_coor.tile_part.K){
+		c=0;
 		++b;
 	}
 	return *this;
@@ -52,7 +55,7 @@ TileCoor::Iterator TileCoor::begin() const{
 }
 
 TileCoor::Iterator TileCoor::end() const{
-	return Iterator(*this,tile_part.B,tile_part.K-1,tile_part.H-1,tile_part.W-1);
+	return Iterator(*this,tile_part.B,0,0,0);
 }
 
 TileCoor::Coor::Coor(len_t _b, len_t _c, len_t _h, len_t _w, const PartSch& _tile_part):
