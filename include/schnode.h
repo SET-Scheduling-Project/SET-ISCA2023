@@ -4,10 +4,10 @@
 #include <cstdint>
 #include <deque>
 #include <iostream>
+#include <list>
 #include <map>
-#include <set>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 #include "bitset.h"
 #include "bufferusage.h"
@@ -130,15 +130,16 @@ protected:
 	static std::vector<std::vector<std::map<BCHW_coor,jsonindex_t> > > wlid;
 	static std::vector<bool> from_core, weight_from_core, to_dram;
 	static std::vector<std::map<fmap_range, jsonindex_t> > ofmapid;
-	static std::vector<std::set<Json::Value> > curr_ifmap;
-	static std::vector<std::set<Json::Value> > curr_weight;
-	static std::set<Json::Value> curr_ofmap;
+	static std::vector<std::list<Json::Value> > curr_ifmap;
+	static std::vector<std::list<Json::Value> > curr_weight;
+	static std::vector<std::list<Json::Value> > curr_ofmap;
 	static std::map<std::string,lid_t> name_to_id;
 	static std::vector<DRAM> DRAM_list;
 	static std::map<Json::Value,tfid_t> DRAM_ofmap_tfid,DRAM_weight_tfid;
 	static csn_ptr root;
 
 public:
+	void IR_gen_init() const;
 	Json::Value IR_gen() const;
 	virtual void add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<Json::Value>& workload_list) const = 0;
 	virtual const LNode* get_lnode_by_id(lid_t id) const = 0;

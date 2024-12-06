@@ -51,6 +51,9 @@ int main(int argc, char** argv){
 				for(Json::Value &buffer : wl["buffer"]){
 					bool newly_added = false;
 					auto tmp_buffer=buffer;
+					if(tmp_buffer.isMember("start_sending")){
+						tmp_buffer.removeMember("start_sending");
+					}
 					if(tmp_buffer.isMember("end_sending")){
 						tmp_buffer.removeMember("end_sending");
 					}
