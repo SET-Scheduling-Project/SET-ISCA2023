@@ -50,14 +50,7 @@ void SchNode::IR_gen_init() const{
 	}
 }
 
-Json::Value SchNode::IR_gen() const{
-	IR_gen_init();
-	cidx_t num_cores = cluster.ylen * (cluster.xlen+2);
-	std::vector<Json::Value> workload_list(num_cores);
-	
-	add_workload_and_dfs(0, 0, workload_list);
-
-	Json::Value ret;
+void SchNode::check_curr(cidx_t num_cores) const{
 	for(cidx_t i=0;i<num_cores;++i){
 		for(const auto& ifmap:curr_ifmap[i]){
 			Json::StyledWriter swriter;
@@ -71,7 +64,19 @@ Json::Value SchNode::IR_gen() const{
 		}
 		assert(curr_ifmap[i].empty());
 		assert(curr_weight[i].empty());
+	}
+}
 
+Json::Value SchNode::IR_gen() const{
+	IR_gen_init();
+	cidx_t num_cores = cluster.ylen * (cluster.xlen+2);
+	std::vector<Json::Value> workload_list(num_cores);
+	
+	add_workload_and_dfs(0, 0, workload_list);
+	check_curr(num_cores);
+
+	Json::Value ret;
+	for(cidx_t i=0;i<num_cores;++i){
 		Json::Value* last_wl = nullptr;
 		for(Json::Value& wl: workload_list[i]){
 			for(Json::Value& buffer: wl["buffer"]){
@@ -390,10 +395,8 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 								else{
 									Json::Value ofmap;
 									append_range_bchw(ofmap,intersect);
-
 									ofmap["transfer_id"] = ifmap["transfer_id"];
 									ofmap["size"] = intersect.size()*8;
-
 									ofmap["destination"].append(destination);
 									ofmapid[prev_workload_id][intersect] = workload_list[from_id][prev_wlid]["ofmap"].size();
 									workload_list[from_id][prev_wlid]["ofmap"].append(ofmap);
@@ -409,15 +412,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 					if(lower_c < upper_c){
 						Json::Value related_ifmap;
 						Json::Value ifmap;
-						ifmap["lower"].append(input_range.b.from);
-						ifmap["lower"].append(lower_c);
-						ifmap["lower"].append(input_range.h.from);
-						ifmap["lower"].append(input_range.w.from);
-
-						ifmap["upper"].append(input_range.b.to-1);
-						ifmap["upper"].append(upper_c-1);
-						ifmap["upper"].append(input_range.h.to-1);
-						ifmap["upper"].append(input_range.w.to-1);
+						append_range_bc1c2hw(ifmap,input_range,lower_c,upper_c);
 
 						ifmap["channel"].append(real_prev_channel_offset + lower_c);
 						ifmap["channel"].append(real_prev_channel_offset + upper_c-1);
@@ -747,6 +742,10 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				append_range_bchw(ofmap,range);
 				ofmap["block"] = (range.size() + 1023) / 1024;
 				ofmap["size"] = range.size() * 8;
+				ofmap["destinations"] = workload["ofmap"];
+				if(workload.isMember("ofmap")){
+					workload.removeMember("ofmap");
+				}
 				ofmap["start_sending"] = true;
 				ofmap["end_sending"] = last_tile;
 				curr_ofmap[core_id].push_back(ofmap);

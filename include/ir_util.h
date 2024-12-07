@@ -9,5 +9,6 @@ namespace Json{
 
 void append_range_bch1(Json::Value& parent, const fmap_range& range);
 void append_range_bchw(Json::Value& parent, const fmap_range& range);
+void append_range_bc1c2hw(Json::Value& parent, const fmap_range& range, len_t lower_c, len_t upper_c);
 
 #endif //IR_UTIL_H
