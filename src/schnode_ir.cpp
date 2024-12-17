@@ -131,6 +131,7 @@ Json::Value SchNode::IR_gen() const{
 					buffer["lower"] = wl["ifmap"]["lower"];
 					buffer["upper"] = wl["ifmap"]["upper"];
 					buffer["workload_id"] = wl["workload_id"];
+					buffer["priority"] = wl["workload_id"];
 					buffer["block"] = ((wl["ifmap"]["upper"][0u].asUInt() - wl["ifmap"]["lower"][0u].asUInt() + 1) * (wl["ifmap"]["upper"][1].asUInt() - wl["ifmap"]["lower"][1].asUInt() + 1) * (wl["ifmap"]["upper"][2].asUInt() - wl["ifmap"]["lower"][2].asUInt() + 1) * (wl["ifmap"]["upper"][3].asUInt() - wl["ifmap"]["lower"][3].asUInt() + 1) + 1023) >> 10;
 					buffer["source"] = wl["ifmap_temp"]["source"];
 					for(Json::Value &source: buffer["source"]){
@@ -150,6 +151,7 @@ Json::Value SchNode::IR_gen() const{
 					buffer["lower"] = wl["weight"]["lower"];
 					buffer["upper"] = wl["weight"]["upper"];
 					buffer["workload_id"] = wl["workload_id"];
+					buffer["priority"] = wl["workload_id"];
 					buffer["block"] = (wl["weight"]["size"].asUInt() / 8 + 1023) >> 10;
 					buffer["source"] = wl["weight_temp"]["source"];
 					for(Json::Value &source: buffer["source"]){
@@ -294,6 +296,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 						dram_weight["transfer_id"] = transfer_id;
 						dram_weight["size"] = wl.R * wl.S * wl.C * range.c.size() * 8;
 						dram_weight["type"] = "weight";
+						dram_weight["priority"] = workload["workload_id"];
 						dram.append_weight(key,dram_weight);
 					}
 				}
@@ -526,6 +529,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 								ofmap["destination"].append(destination);
 								ofmap["related_ifmap"] = related_ifmap;
 								ofmap["type"] = "fmap";
+								ofmap["priority"] = workload["workload_id"];
 								dram.append_ofmap(key,ofmap);
 							}
 						}
@@ -601,6 +605,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 						input["lower"] = ifmap["lower"];
 						input["upper"] = ifmap["upper"];
 						input["type"] = "fmap";
+						input["priority"] = workload["workload_id"];
 						dram.append_ofmap(key,input);
 					}
 				}
@@ -688,6 +693,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 								append_range_bchw(buffer,next_range);
 								append_range_bchw(buffer["ofmap_range"],next_range_ofmap);
 								buffer["block"] = ((next_range.size() + 1023) >> 10);
+								buffer["end_loading"] = false;
 								curr_ifmap[to_id].push_back(buffer);
 							}
 						}
@@ -721,6 +727,8 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				source["transfer_id"] = workload["weight"]["transfer_id"][0u];
 				weight["source"].append(source);
 				weight["transfer_id"].append(workload["weight"]["transfer_id"][0u]);
+				weight["priority"] = workload["workload_id"];
+				weight["end_loading"] = false;
 				if(batch_offset % batch_size == 0 && coor.b == 0 && coor.c == 0 && coor.h == 0 && coor.w == 0){
 					curr_weight[core_id].push_back(weight);
 					if(workload_list[core_id].size() && get_lca(this, root->get_lnode_by_id(name_to_id[workload_list[core_id][workload_list[core_id].size()-1]["layer_name"].asString()])) != root){
@@ -751,7 +759,22 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				curr_ofmap[core_id].push_back(ofmap);
 			}
 
-			for(const Json::Value& ifmap : curr_ifmap[core_id]){
+			auto ifmap_remove_crit = [&](const Json::Value& ifmap){
+				return ifmap["layer"] == layert.name() && 
+					ifmap["ofmap_range"]["lower"][0u] == range.b.from &&
+					ifmap["ofmap_range"]["lower"][1u] == range.c.from &&
+					ifmap["ofmap_range"]["lower"][2u] == range.h.from &&
+					ifmap["ofmap_range"]["lower"][3u] == range.w.from &&
+					ifmap["ofmap_range"]["upper"][0u] == range.b.to-1 &&
+					ifmap["ofmap_range"]["upper"][1u] == range.c.to-1 &&
+					ifmap["ofmap_range"]["upper"][2u] == range.h.to-1 &&
+					ifmap["ofmap_range"]["upper"][3u] == range.w.to-1;
+			};
+
+			for(Json::Value& ifmap : curr_ifmap[core_id]){
+				if(ifmap_remove_crit(ifmap)){
+					ifmap["end_loading"] = true;
+				}
 				workload["buffer"].append(ifmap);
 			}
 			for(const Json::Value& weight : curr_weight[core_id]){
@@ -765,17 +788,6 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 
 			workload_list[core_id].append(workload);
 
-			auto ifmap_remove_crit = [&](const Json::Value& ifmap){
-				return ifmap["layer"] == layert.name() && 
-					ifmap["ofmap_range"]["lower"][0u] == range.b.from &&
-					ifmap["ofmap_range"]["lower"][1u] == range.c.from &&
-					ifmap["ofmap_range"]["lower"][2u] == range.h.from &&
-					ifmap["ofmap_range"]["lower"][3u] == range.w.from &&
-					ifmap["ofmap_range"]["upper"][0u] == range.b.to-1 &&
-					ifmap["ofmap_range"]["upper"][1u] == range.c.to-1 &&
-					ifmap["ofmap_range"]["upper"][2u] == range.h.to-1 &&
-					ifmap["ofmap_range"]["upper"][3u] == range.w.to-1;
-			};
 			curr_ifmap[core_id].remove_if(ifmap_remove_crit);
 			
 			if(REF_IS_INSTANCE(layert.layer(), ConvLayer) && !layert.hasWgtPrevs()){
