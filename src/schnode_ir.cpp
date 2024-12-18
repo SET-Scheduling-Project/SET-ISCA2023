@@ -74,53 +74,44 @@ Json::Value SchNode::IR_gen() const{
 	
 	add_workload_and_dfs(0, 0, workload_list);
 	check_curr(num_cores);
-
+	
 	Json::Value ret;
 	for(cidx_t i=0;i<num_cores;++i){
 		Json::Value* last_wl = nullptr;
 		for(Json::Value& wl: workload_list[i]){
 			for(Json::Value& buffer: wl["buffer"]){
+				lid_t layerid = name_to_id[buffer["layer"].asString()];
 				if(buffer["type"] == "ifmap"){
-					assert(wlid[i][name_to_id[buffer["layer"].asString()]].count({buffer["ofmap_range"]["lower"][0u].asUInt(),buffer["ofmap_range"]["lower"][1u].asUInt(),buffer["ofmap_range"]["lower"][2u].asUInt(),buffer["ofmap_range"]["lower"][3u].asUInt()}));
-					buffer["workload_id"] = workload_list[i][
-							wlid[i][name_to_id[buffer["layer"].asString()]][
-								{buffer["ofmap_range"]["lower"][0u].asUInt(),buffer["ofmap_range"]["lower"][1u].asUInt(),buffer["ofmap_range"]["lower"][2u].asUInt(),buffer["ofmap_range"]["lower"][3u].asUInt()}
-							]
-						]["workload_id"];
-					buffer["source"] = workload_list[i][
-							wlid[i][name_to_id[buffer["layer"].asString()]][
-								{buffer["ofmap_range"]["lower"][0u].asUInt(),buffer["ofmap_range"]["lower"][1u].asUInt(),buffer["ofmap_range"]["lower"][2u].asUInt(),buffer["ofmap_range"]["lower"][3u].asUInt()}
-							]
-						]["ifmap_temp"]["source"];
+					BCHW_coor ofmap_range{buffer["ofmap_range"]["lower"][0u].asUInt(),buffer["ofmap_range"]["lower"][1u].asUInt(),buffer["ofmap_range"]["lower"][2u].asUInt(),buffer["ofmap_range"]["lower"][3u].asUInt()};
+					assert(wlid[i][layerid].count(ofmap_range));
+					buffer["workload_id"] = workload_list[i][wlid[i][layerid][ofmap_range]]["workload_id"];
+					buffer["source"] = workload_list[i][wlid[i][layerid][ofmap_range]]["ifmap_temp"]["source"];
 					for(Json::Value &source: buffer["source"]){
 						buffer["transfer_id"].append(source["transfer_id"]);
 					}
 				}
 				if(buffer["type"] == "weight"){
 					if(buffer.isMember("from_core")){
+						BCHW_coor ofmap_range{buffer["ofmap_range"]["lower"][0u].asUInt(),buffer["ofmap_range"]["lower"][1u].asUInt(),buffer["ofmap_range"]["lower"][2u].asUInt(),buffer["ofmap_range"]["lower"][3u].asUInt()};
 						if(!buffer.isMember("workload_id")){
-							assert(wlid[i][name_to_id[buffer["layer"].asString()]].count({buffer["ofmap_range"]["lower"][0u].asUInt(),buffer["ofmap_range"]["lower"][1u].asUInt(),buffer["ofmap_range"]["lower"][2u].asUInt(),buffer["ofmap_range"]["lower"][3u].asUInt()}));
-							buffer["workload_id"] = workload_list[i][
-									wlid[i][name_to_id[buffer["layer"].asString()]][
-										{buffer["ofmap_range"]["lower"][0u].asUInt(),buffer["ofmap_range"]["lower"][1u].asUInt(),buffer["ofmap_range"]["lower"][2u].asUInt(),buffer["ofmap_range"]["lower"][3u].asUInt()}
-									]
-								]["workload_id"];
+							assert(wlid[i][layerid].count(ofmap_range));
+							buffer["workload_id"] = workload_list[i][wlid[i][layerid][ofmap_range]]["workload_id"];
 						}
 						buffer.removeMember("from_core");
 					}
 					if(!buffer.isMember("source")){
-						assert(wlid[i][name_to_id[buffer["layer"].asString()]].count({buffer["ofmap_range"]["lower"][0u].asUInt(),buffer["ofmap_range"]["lower"][1u].asUInt(),buffer["ofmap_range"]["lower"][2u].asUInt(),buffer["ofmap_range"]["lower"][3u].asUInt()}));
-						buffer["source"] = workload_list[i][
-								wlid[i][name_to_id[buffer["layer"].asString()]][
-									{buffer["ofmap_range"]["lower"][0u].asUInt(),buffer["ofmap_range"]["lower"][1u].asUInt(),buffer["ofmap_range"]["lower"][2u].asUInt(),buffer["ofmap_range"]["lower"][3u].asUInt()}
-								]
-							]["weight_temp"]["source"];
+						BCHW_coor ofmap_range{buffer["ofmap_range"]["lower"][0u].asUInt(),buffer["ofmap_range"]["lower"][1u].asUInt(),buffer["ofmap_range"]["lower"][2u].asUInt(),buffer["ofmap_range"]["lower"][3u].asUInt()};
+						assert(wlid[i][layerid].count(ofmap_range));
+						buffer["source"] = workload_list[i][wlid[i][layerid][ofmap_range]]["weight_temp"]["source"];
 					}
 					if(!buffer.isMember("transfer_id")){
 						for(Json::Value &source: buffer["source"]){
 							buffer["transfer_id"].append(source["transfer_id"]);
 						}
 					}
+				}
+				if(buffer["type"] == "ofmap"){
+					buffer["destinations"] = (buffer["start_sending"].asBool() ? wl : *last_wl)["ofmap"];
 				}
 			}
 			if(wl.isMember("ifmap")){
@@ -174,9 +165,9 @@ Json::Value SchNode::IR_gen() const{
 			if(wl.isMember("weight_temp")){
 				wl.removeMember("weight_temp");
 			}
-			//if(wl.isMember("ofmap")){
-			//	wl.removeMember("ofmap");
-			//}
+			if(wl.isMember("ofmap")){
+				wl.removeMember("ofmap");
+			}
 		}
 		if(workload_list[i].type() != Json::nullValue){
 			ret[std::to_string(i)]=workload_list[i];
@@ -750,10 +741,6 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				append_range_bchw(ofmap,range);
 				ofmap["block"] = (range.size() + 1023) / 1024;
 				ofmap["size"] = range.size() * 8;
-				ofmap["destinations"] = workload["ofmap"];
-				if(workload.isMember("ofmap")){
-					workload.removeMember("ofmap");
-				}
 				ofmap["start_sending"] = true;
 				ofmap["end_sending"] = last_tile;
 				curr_ofmap[core_id].push_back(ofmap);
@@ -771,14 +758,32 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 					ifmap["ofmap_range"]["upper"][3u] == range.w.to-1;
 			};
 
+			auto first_weight_crit = [&](const Json::Value& weight){
+				return REF_IS_INSTANCE(layert.layer(), ConvLayer) &&
+						!layert.hasWgtPrevs() &&
+						(batch_offset + num_batch) % batch_size == 1 &&
+						coor.b == 0 &&
+						coor.c == 0 &&
+						coor.h == 0 &&
+						coor.w == 0 &&
+						weight["layer"] == layert.name();
+			};
+
 			for(Json::Value& ifmap : curr_ifmap[core_id]){
 				if(ifmap_remove_crit(ifmap)){
 					ifmap["end_loading"] = true;
 				}
 				workload["buffer"].append(ifmap);
 			}
-			for(const Json::Value& weight : curr_weight[core_id]){
+			for(Json::Value& weight : curr_weight[core_id]){
+				bool first_weight=first_weight_crit(weight);
+				if(first_weight){
+					weight["end_loading"] = true;
+				}
 				workload["buffer"].append(weight);
+				if(first_weight){
+					weight["end_loading"] = false;
+				}
 			}
 			for(const Json::Value& ofmap: curr_ofmap[core_id]){
 				workload["buffer"].append(ofmap);
