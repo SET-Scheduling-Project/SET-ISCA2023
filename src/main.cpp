@@ -13,6 +13,7 @@
 #include <cmath>		// std::pow
 #include <cstdlib>		// std::srand
 #include <ctime>		// std::time
+#include <filesystem>   // std::filesystem::create_directories
 #include <fstream>		// std::ifstream, std::ofstream
 #include <functional>	// std::ref
 #include <iostream>		// std::cin, std::cout, std::endl
@@ -20,7 +21,6 @@
 #include <thread>		// std::thread
 
 #define KB *1024
-
 
 int main(int argc, char** argv){
 #ifdef DEBUG
@@ -118,7 +118,10 @@ int main(int argc, char** argv){
 	// mm=0;nn=2;bb=64;xx=8;yy=8;ss=4;rr=100;ff=1;bw=24;
 	// 0 13 2 4 4 2 50 1 24
 
-	if(argc > 1) IR_name = std::string("results/json/") + argv[1];
+	if(argc > 1){
+		std::filesystem::create_directories("results/json/");
+		IR_name = std::string("results/json/") + argv[1];
+	}
 
 	std::cout << "Seed: " << seed << std::endl;
 

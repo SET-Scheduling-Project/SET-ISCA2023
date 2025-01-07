@@ -125,11 +125,13 @@ Json::Value SchNode::IR_gen() const{
 					buffer["priority"] = wl["workload_id"];
 					buffer["block"] = ((wl["ifmap"]["upper"][0u].asUInt() - wl["ifmap"]["lower"][0u].asUInt() + 1) * (wl["ifmap"]["upper"][1].asUInt() - wl["ifmap"]["lower"][1].asUInt() + 1) * (wl["ifmap"]["upper"][2].asUInt() - wl["ifmap"]["lower"][2].asUInt() + 1) * (wl["ifmap"]["upper"][3].asUInt() - wl["ifmap"]["lower"][3].asUInt() + 1) + 1023) >> 10;
 					buffer["source"] = wl["ifmap_temp"]["source"];
+					buffer["end_loading"] = true;
 					for(Json::Value &source: buffer["source"]){
 						buffer["transfer_id"].append(source["transfer_id"]);
 					}
 					wl["buffer"].append(buffer);
 					if(last_wl && (*last_wl)["workload_id"] >= wl["ifmap"]["max_workload_id"].asUInt()){
+						buffer["end_loading"] = false;
 						(*last_wl)["buffer"].append(buffer);
 					}
 				}
@@ -145,11 +147,13 @@ Json::Value SchNode::IR_gen() const{
 					buffer["priority"] = wl["workload_id"];
 					buffer["block"] = (wl["weight"]["size"].asUInt() / 8 + 1023) >> 10;
 					buffer["source"] = wl["weight_temp"]["source"];
+					buffer["end_loading"] = true;
 					for(Json::Value &source: buffer["source"]){
 						buffer["transfer_id"].append(source["transfer_id"]);
 					}
 					wl["buffer"].append(buffer);
 					if(last_wl && (*last_wl)["workload_id"] >= wl["weight"]["max_workload_id"].asUInt()){
+						buffer["end_loading"] = false;
 						(*last_wl)["buffer"].append(buffer);
 					}
 				}
@@ -295,20 +299,20 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				workload["weight"] = weight;
 			}
 
-			fmap_range ofmap_range = range;
-			fmap_range weight_range = range;
-			layert.layer().ofm_to_ifm(ofmap_range);
-			layert.layer().ofm_to_wgt(weight_range);
+			fmap_range last_ofmap_range = range;
+			fmap_range last_weight_range = range;
+			layert.layer().ofm_to_ifm(last_ofmap_range);
+			layert.layer().ofm_to_wgt(last_weight_range);
 
 			if(REF_IS_INSTANCE(layert.layer(), ConvLayer) && layert.hasWgtPrevs()){
 				Json::Value weight;
-				append_range_bch1(weight,weight_range);
+				append_range_bch1(weight,last_weight_range);
 				weight["from_ofmap"] = true;
-				weight["size"] = weight_range.size() * 8;
+				weight["size"] = last_weight_range.size() * 8;
 				workload["weight"] = weight;
 			}
 
-			append_range_bchw(workload["ifmap"],ofmap_range);
+			append_range_bchw(workload["ifmap"],last_ofmap_range);
 
 			Bitset prev = layert.getPrevs();
 			Bitset next = layert.get_nexts();
@@ -321,7 +325,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				const Node& node = network->getNode(layerno);
 				const LNode* lnode = root->get_lnode_by_id(layerno);
 				assert(layert.getIfmPrevs().contains(layerno)^layert.getWgtPrevs().contains(layerno));
-				const auto input_range = layert.getIfmPrevs().contains(layerno) ? ofmap_range : weight_range;
+				const auto input_range = layert.getIfmPrevs().contains(layerno) ? last_ofmap_range : last_weight_range;
 				const auto real_prev_channel_offset = layert.getIfmPrevs().contains(layerno) ? prev_channel_offset : 0;
 				if(dirp_set.contains(layerno)){
 					for(auto prev_part: lnode->get_place_sch().getOfmL()){
@@ -552,10 +556,10 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 
 			if(memLayouts.extIdx != memLayouts.ifmIdx){
 				Json::Value ifmap;
-				append_range_bchw(ifmap,ofmap_range);
-				ifmap["channel"].append(ofmap_range.c.from);
-				ifmap["channel"].append(ofmap_range.c.to-1);
-				ifmap["size"] = ofmap_range.size() * 8;
+				append_range_bchw(ifmap,last_ofmap_range);
+				ifmap["channel"].append(last_ofmap_range.c.from);
+				ifmap["channel"].append(last_ofmap_range.c.to-1);
+				ifmap["size"] = last_ofmap_range.size() * 8;
 
 				ifmap["layer_name"] = "input";
 				for(auto ilgroupid: get_iMemLayouts()[memLayouts.extIdx].get_layouts()){
@@ -738,6 +742,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				Json::Value ofmap;
 				ofmap["type"] = "ofmap";
 				ofmap["layer"] = layert.name();
+				ofmap["workload_id"] = workload["workload_id"];
 				append_range_bchw(ofmap,range);
 				ofmap["block"] = (range.size() + 1023) / 1024;
 				ofmap["size"] = range.size() * 8;
@@ -761,7 +766,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 			auto first_weight_crit = [&](const Json::Value& weight){
 				return REF_IS_INSTANCE(layert.layer(), ConvLayer) &&
 						!layert.hasWgtPrevs() &&
-						(batch_offset + num_batch) % batch_size == 1 &&
+						batch_offset % batch_size == 0 &&
 						coor.b == 0 &&
 						coor.c == 0 &&
 						coor.h == 0 &&
@@ -779,10 +784,11 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				bool first_weight=first_weight_crit(weight);
 				if(first_weight){
 					weight["end_loading"] = true;
-				}
-				workload["buffer"].append(weight);
-				if(first_weight){
+					workload["buffer"].append(weight);
 					weight["end_loading"] = false;
+				}
+				else{
+					workload["buffer"].append(weight);
 				}
 			}
 			for(const Json::Value& ofmap: curr_ofmap[core_id]){
