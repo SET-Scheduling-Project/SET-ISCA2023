@@ -61,4 +61,6 @@ public:
 	operator bool() const;
 };
 
+fmap_range range_from_partition_number(const fmap_shape &shape, len_t batch, const PartSch &partition, cidx_t id);
+
 #endif // PLACEMENT_H

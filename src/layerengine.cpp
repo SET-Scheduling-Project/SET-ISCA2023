@@ -423,6 +423,105 @@ bool StdLayerEngine::updateNoC(LNode* curNode, NoC& old_noc) const {
 	return has_update;
 }
 
+LayerScheme StdLayerEngine::fillin(LNode* curNode, const Light_placement &place,bool calc_noc, bool base){
+	LayerScheme layerSch;
+	const Cluster& cluster = curNode->cluster;
+	const Node& layerT = curNode->layert;
+	const Layer& layer = layerT.layer();
+	const fmap_shape& ofmShape = layer.ofmap_shape();
+	len_t wgtBatch = curNode->wgt_bgrp;
+	len_t B = curNode->num_batch;
+	bool wgt_B = layerT.hasWgtPrevs();
+	/*
+	len_t K = ofmShape.c;
+	len_t H = ofmShape.h;
+	len_t W = ofmShape.w;
+	*/
+	cidx_t numCores = cluster.num_cores();
+	const Core::Buffer& ubuf = mapper->core().ubuf();
+	vol_t totUbufSize = ubuf.Size * numCores;
+	layerSch.noc.calc_bw = NoC::calc_noc_control;
+	layerSch.noc.is_base = NoC::interleave;
+	// Current scheme
+	SchNode::SchCost curCost;
+	PlaceSch& placeSch = layerSch.place;
+	placeSch.fetch = place.get_fetch_scheme().at(curNode->getLayer().getid());
+	//NoC noc(false);
+	pos_t* permOrder = new pos_t[numCores];
+	placeSch.permuteOrder.reset(permOrder);
+	placeSch.ifmLayout = std::make_unique<StdDataLayout>(numCores, permOrder);
+	if(layer.weight_size() > 0)
+		placeSch.wgtLayout = std::make_unique<StdDataLayout>(numCores, permOrder);
+	else
+		placeSch.wgtLayout = std::make_unique<StdDataLayout>(0, nullptr);
+	placeSch.ofmLayout = std::make_unique<StdULayout>(numCores, permOrder);
+
+	PartSch& partSch = placeSch.part;
+	CoreMapper::CoreMapping tileSch;
+
+	// For ubuf energy
+	energy_t ubufOfm = ofmShape.tot_size(B) * ubuf.RCost;
+	energy_t ubufTotal;
+
+	len_t minCuts = 0;
+	if(REF_IS_INSTANCE(layer, ConvLayer) && !REF_IS_INSTANCE(layer, GroupConvLayer))
+		minCuts = static_cast<len_t>(layer.real_ifmap_shape().tot_size(B) / (totUbufSize*0.8) + 1);
+	
+	Light_partition partition;
+	for(auto layer : place.get_partition()){
+		if(layer.layerno == curNode->getLayer().getid()){
+			partSch.K = layer.c;
+			partSch.B = layer.b;
+			partSch.W = layer.w;
+			partSch.H = layer.h;
+			partition = layer;
+		}
+	}
+	assert(partSch.size() == static_cast<unsigned>(numCores));
+
+	// Update placeSch
+	initLayouts(placeSch, layerT, ofmShape, B, place);
+
+	// Estimate buffer usage
+	vol_t estimatedBuf = ofm_ubuf_vol;
+	estimatedBuf += placeSch.ifmLayout->maxRange();
+	estimatedBuf += placeSch.wgtLayout->maxRange();
+	
+	// Search for intra-tile dataflow
+	tileSch = mapper->genLayerMap(layer, partSch, placeSch.fetch, B, wgt_B);
+	if(!tileSch.cost.is_valid()){
+		curNode->valid=false;
+		return layerSch;
+	}
+	curCost.energy = tileSch.cost.energy * numCores;
+	curCost.time = tileSch.cost.time;
+
+	// Calc ubuf energy
+	// TODO: default to not pinning weights.
+	energy_t ubufWgt = placeSch.wgtLayout->totalSize() * ubuf.WCost;
+	if(!wgt_B) ubufWgt /= (wgtBatch / B);
+	ubufTotal = ubufWgt * placeSch.fetch.wgtFetch + ubufOfm;
+	ubufTotal += placeSch.ifmLayout->totalSize() * ubuf.WCost * placeSch.fetch.ifmFetch;
+	curCost.energy += ubufTotal;
+
+	// Search for placement.
+	{
+		placeSch.initPlacement(cluster, place, curNode->getLayer().getid());			
+		static_cast<StdDataLayout&>(placeSch.getIfmL()).setCPosArr();
+		static_cast<StdDataLayout&>(placeSch.getWgtL()).setCPosArr();
+		placeSch.finalize();
+		calcNoC(layerSch.noc, placeSch, place, curNode, true);
+		SchNode::SchCost curCostAll = curCost;
+		curCostAll.energy += layerSch.noc.get_cost();
+		cycle_t nocTime = layerSch.noc.get_dram_time();
+		curCostAll.time = MAX(curCostAll.time, nocTime);
+		layerSch.totCost = curCostAll;
+		layerSch.extUbufEnergy = ubufTotal;
+		layerSch.tileSch = tileSch;
+	}
+	return layerSch;
+}
+
 bool LayerScheme::isValid() const{
 	return totCost.isValid();
 }

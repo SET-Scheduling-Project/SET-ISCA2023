@@ -22,6 +22,15 @@ struct PartSch{
 	friend std::ostream& operator<<(std::ostream& os, const PartSch& sch);
 };
 
+struct FetchSch : public PartSch {
+	len_t ifmFetch;
+	len_t wgtFetch;
+	explicit FetchSch() = default;
+	FetchSch(len_t _K, len_t _B, len_t _H, len_t _W, len_t _ifmF, len_t _wgtF);
+	operator bool() const;
+	void clear();
+};
+
 class PartIter;
 
 class PartEngine{
