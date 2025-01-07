@@ -746,7 +746,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				append_range_bchw(ofmap,range);
 				ofmap["block"] = (range.size() + 1023) / 1024;
 				ofmap["size"] = range.size() * 8;
-				ofmap["start_sending"] = true;
+				ofmap["start_sending"] = last_tile;
 				ofmap["end_sending"] = last_tile;
 				curr_ofmap[core_id].push_back(ofmap);
 			}
@@ -814,7 +814,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 			for(auto it=curr_ofmap[core_id].begin();it!=curr_ofmap[core_id].end();){
 				Json::Value& ofmap = *it;
 				if(ofmap["end_sending"].asBool()==false){
-					ofmap["start_ending"]=false;
+					ofmap["start_ending"]=true;
 					ofmap["end_sending"]=true;
 					++it;
 				}
