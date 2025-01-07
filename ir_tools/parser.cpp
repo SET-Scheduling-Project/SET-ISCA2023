@@ -57,6 +57,9 @@ int main(int argc, char** argv){
 					if(tmp_buffer.isMember("end_sending")){
 						tmp_buffer.removeMember("end_sending");
 					}
+					if(tmp_buffer.isMember("end_loading")){
+						tmp_buffer.removeMember("end_loading");
+					}
 					if(last.count(tmp_buffer)){
 						now[tmp_buffer] = last[tmp_buffer];
 						newly_added = false;
