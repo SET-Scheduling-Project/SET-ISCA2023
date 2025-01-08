@@ -49,6 +49,14 @@ The "Scheduling Space Size Calculation" and "Optimal HW-tile Allocation Algorith
 
       12: pnasnet
 
+      13: BERT-Large (one cell)
+
+      14: GPT2-XL prefill stage (one cell)
+
+      15: GPT2-XL decode stage (one cell)
+
+    - Note: For the LLM models, we provide their one-cell version due to the excessive length and identical cell structure of the network. To run the full network, see the comments in "nns/llm.cpp".
+
 	- batch: Workload batch size.
 
     - x, y: Length of the x/y axis in the mesh.
@@ -71,6 +79,12 @@ The "Scheduling Space Size Calculation" and "Optimal HW-tile Allocation Algorith
     - "echo *dataflow net batch x y stride round cost_f bw* | ./build/stschedule [IR_file]"
 
 - The current running method is not elegant, and we will improve it soon.
+
+## Update History
+
+2025/01/08 Added LLM models (BERT-Large, GPT2-XL prefill/decode).
+
+2024/05/11 Initial version.
 
 ## Current Plans
 

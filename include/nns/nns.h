@@ -27,6 +27,16 @@ extern const Network lstm;
 extern const Network transformer;
 extern const Network transformer_cell;
 
+// For LLM a single block is provided for each network.
+// See comments in "nns/llm.cpp" for more detail.
+
+// extern const Network BERT;
+extern const Network BERT_block;
+// extern const Network GPT2_prefill;
+extern const Network GPT2_prefill_block;
+// extern const Network GPT2_decode;
+extern const Network GPT2_decode_block;
+
 extern const Network PNASNet;
 
 #endif // NNS_H

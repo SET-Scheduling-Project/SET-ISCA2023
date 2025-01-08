@@ -171,6 +171,18 @@ int main(int argc, char** argv){
 		network = &PNASNet;
 		net_name="pnas";
 		break;
+	case 13:
+		network = &BERT_block;
+		net_name="bert";
+		break;
+	case 14:
+		network = &GPT2_prefill_block;
+		net_name="gpt_prefill";
+		break;
+	case 15:
+		network = &GPT2_decode_block;
+		net_name="gpt_decode";
+		break;
 	default:
 		assert(false);
 		break;

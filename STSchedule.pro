@@ -61,6 +61,7 @@ SOURCES += \
     src/nns/gnmt.cpp \
     src/nns/googlenet.cpp \
     src/nns/incep_resnet.cpp \
+    src/nns/llm.cpp \
     src/nns/pnasnet.cpp \
     src/nns/resnet.cpp \
     src/nns/transformer.cpp \
