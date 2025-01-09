@@ -111,7 +111,7 @@ Json::Value SchNode::IR_gen() const{
 					}
 				}
 				if(buffer["type"] == "ofmap"){
-					buffer["destinations"] = (buffer["start_sending"].asBool() ? wl : *last_wl)["ofmap"];
+					buffer["destinations"] = (!buffer["start_sending"].asBool() ? wl : *last_wl)["ofmap"];
 				}
 			}
 			if(wl.isMember("ifmap")){
