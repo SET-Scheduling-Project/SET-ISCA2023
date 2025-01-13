@@ -129,33 +129,3 @@ bool PlaceIter::nextPlace(cost_t cost){
 PlaceIter::operator bool() const{
 	return hasNext;
 }
-
-fmap_range range_from_partition_number(const fmap_shape &shape, len_t batch, const PartSch &partition, cidx_t id){
-	len_t b_len = DIVCEIL(batch,partition.B);
-	len_t k_len = DIVCEIL(shape.c,partition.K);
-	len_t h_len = DIVCEIL(shape.h,partition.H);
-	len_t w_len = DIVCEIL(shape.w,partition.W);
-	len_t* arrs[4];
-	arrs[0] = part_intv(shape.c, partition.K);
-	arrs[1] = part_intv(batch, partition.B);
-	arrs[2] = part_intv(shape.h, partition.H);
-	arrs[3] = part_intv(shape.w, partition.W);
-	len_t w_id = id%partition.W;
-	id /= partition.W;
-	len_t h_id = id%partition.H;
-	id /= partition.H;
-	len_t c_id = id%partition.K;
-	id /= partition.K;
-	len_t b_id = id;
-	auto ret = fmap_range{
-		{arrs[0][c_id], arrs[0][c_id+1]},
-		{arrs[1][b_id], arrs[1][b_id+1]},
-		{arrs[2][h_id], arrs[2][h_id+1]},
-		{arrs[3][w_id], arrs[3][w_id+1]}
-	};
-	delete[] arrs[0];
-	delete[] arrs[1];
-	delete[] arrs[2];
-	delete[] arrs[3];
-	return ret;
-}

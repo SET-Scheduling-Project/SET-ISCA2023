@@ -220,19 +220,3 @@ vol_t PartSch::usize(const fmap_range& range) const {
 std::ostream& operator<<(std::ostream& os, const PartSch& sch){
 	return os << "(B=" << sch.B << ",K=" << sch.K << ",H=" << sch.H << ",W=" << sch.W << ')';
 }
-
-FetchSch::FetchSch(len_t _K, len_t _B, len_t _H, len_t _W, len_t _ifmF, len_t _wgtF)
-	:PartSch(_K, _B, _H, _W), ifmFetch(_ifmF), wgtFetch(_wgtF) {}
-
-FetchSch::operator bool() const {
-	return B != 0;
-}
-
-void FetchSch::clear() {
-	B = 0;
-	H = 0;
-	K = 0;
-	W = 0;
-	ifmFetch = 1;
-	wgtFetch = 1;
-}
