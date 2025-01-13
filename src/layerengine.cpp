@@ -26,7 +26,7 @@ vol_t StdLayerEngine::get_ubuf_size() const{
  *
  * @return LayerScheme.
  */
-LayerScheme StdLayerEngine::search(LNode* curNode,bool calc_noc) const{
+LayerScheme StdLayerEngine::search(LNode* curNode) const{
 	// The final scheme
 	LayerScheme layerSch;
 
@@ -35,7 +35,7 @@ LayerScheme StdLayerEngine::search(LNode* curNode,bool calc_noc) const{
 	const Node& layerT = curNode->layert;
 	const Layer& layer = layerT.layer();
 	const fmap_shape& ofmShape = layer.ofmap_shape();
-	len_t wgtBatch = curNode->wgt_bgrp;
+	len_t totBatch = LNode::tot_batch;
 	len_t B = curNode->num_batch;
 	bool wgt_B = layerT.hasWgtPrevs();
 	/*
@@ -50,7 +50,7 @@ LayerScheme StdLayerEngine::search(LNode* curNode,bool calc_noc) const{
 	// Current scheme
 	SchNode::SchCost curCost;
 	PlaceSch placeSch;
-	NoC noc(false, NoC::interleave);
+	NoC noc(false);
 	pos_t* permOrder = new pos_t[numCores];
 	placeSch.permuteOrder.reset(permOrder);
 	placeSch.ifmLayout = std::make_unique<StdDataLayout>(numCores, permOrder);
@@ -68,8 +68,8 @@ LayerScheme StdLayerEngine::search(LNode* curNode,bool calc_noc) const{
 		layerSch.place.memLayout = std::make_unique<MemULayout>(ofmRange, NoC::dram_list.data(), NoC::dram_list.size());
 	}
 	*/
-	PartSch& partSch = placeSch.part;
 
+	PartSch& partSch = placeSch.part;
 	CoreMapper::CoreMapping tileSch;
 
 	// For ubuf energy
@@ -90,38 +90,13 @@ LayerScheme StdLayerEngine::search(LNode* curNode,bool calc_noc) const{
 		initLayouts(placeSch, layerT, ofmShape, B);
 
 		// Estimate buffer usage
-		vol_t estimatedBuf = ofm_ubuf_vol;
+		vol_t estimatedBuf = mapper->buffer_size(placeSch.ofmLayout->maxRange());
 		estimatedBuf += placeSch.ifmLayout->maxRange();
 		estimatedBuf += placeSch.wgtLayout->maxRange();
-		if (estimatedBuf > ubuf.Size) {
-			if (!curNode->is_seg()) {
-				continue;
-			}
-			placeSch.fetch = layer.set_fetch(partSch, ubuf.Size - ofm_ubuf_vol, B, wgt_B);
-			if (!placeSch.fetch) {
-				// No fetch scheme available.
-				continue;
-			}
-			/*
-			fmap_range r_weight;
-			vol_t weight = 0;
-			if (placeSch.wgtLayout->maxRange() != 0) {
-				r_weight = placeSch.wgtLayout->MaxRange_();
-				weight = layer.wgt_part(r_weight, placeSch.fetch);
-			}
-			fmap_range r_ifmap = placeSch.ifmLayout->MaxRange_();
-			vol_t ifmap = layer.ifm_part(r_ifmap, placeSch.fetch);
-			if (ifmap * 2 + weight + ofm_ubuf_vol > ubuf.Size) {
-				continue;
-			}*/
-		}
-		else {
-			// No fetch.
-			placeSch.fetch.clear();
-		}
-		
+		if(estimatedBuf > ubuf.Size) continue;
+
 		// Search for intra-tile dataflow
-		tileSch = mapper->genLayerMap(layer, partSch, placeSch.fetch, B, wgt_B);
+		tileSch = mapper->genLayerMap(layer, partSch, B, wgt_B);
 		if(!tileSch.cost.is_valid()) continue;
 		curCost.energy = tileSch.cost.energy * numCores;
 		curCost.time = tileSch.cost.time;
@@ -129,9 +104,9 @@ LayerScheme StdLayerEngine::search(LNode* curNode,bool calc_noc) const{
 		// Calc ubuf energy
 		// TODO: default to not pinning weights.
 		energy_t ubufWgt = placeSch.wgtLayout->totalSize() * ubuf.WCost;
-		if(!wgt_B) ubufWgt /= (wgtBatch / B);
-		ubufTotal = ubufWgt * placeSch.fetch.wgtFetch + ubufOfm;
-		ubufTotal += placeSch.ifmLayout->totalSize() * ubuf.WCost * placeSch.fetch.ifmFetch;
+		if(!wgt_B) ubufWgt /= (totBatch / B);
+		ubufTotal = ubufWgt + ubufOfm;
+		ubufTotal += placeSch.ifmLayout->totalSize() * ubuf.WCost;
 		curCost.energy += ubufTotal;
 
 		// Search for placement.
@@ -141,14 +116,14 @@ LayerScheme StdLayerEngine::search(LNode* curNode,bool calc_noc) const{
 			placeSch.initPlacement(cluster);
 			static_cast<StdDataLayout&>(placeSch.getIfmL()).setCPosArr();
 			static_cast<StdDataLayout&>(placeSch.getWgtL()).setCPosArr();
-
-			calcNoC(noc, placeSch, curNode);
+			calcNoC(noc, placeSch, layerSch.memLayouts, curNode);
 			SchNode::SchCost curCostAll = curCost;
 			curCostAll.energy += noc.get_cost();
-			cycle_t nocTime = noc.get_dram_time();
+			cycle_t nocTime = noc.get_time();
 			curCostAll.time = MAX(curCostAll.time, nocTime);
 			if(curCostAll.cost() < layerSch.totCost.cost()){
 				layerSch.totCost = curCostAll;
+				layerSch.coreCost = curCost;
 				layerSch.extUbufEnergy = ubufTotal;
 				layerSch.tileSch = tileSch;
 				layerSch.place.update(std::move(placeSch));
@@ -166,9 +141,7 @@ LayerScheme StdLayerEngine::search(LNode* curNode,bool calc_noc) const{
 		static_cast<StdDataLayout&>(layerSch.place.getIfmL()).setCPosArr();
 		static_cast<StdDataLayout&>(layerSch.place.getWgtL()).setCPosArr();
 		layerSch.place.finalize();
-		layerSch.noc.calc_bw = NoC::calc_noc_control;
-		layerSch.noc.is_base = NoC::interleave;
-		calcNoC(layerSch.noc, layerSch.place, curNode);
+		calcNoC(layerSch.noc, layerSch.place, layerSch.memLayouts, curNode);
 	}
 	return layerSch;
 }
@@ -448,100 +421,6 @@ bool StdLayerEngine::updateNoC(LNode* curNode, NoC& old_noc) const {
 	assert(curC == layerT.layer().real_ifmap_shape().c);
 
 	return has_update;
-}
-
-void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, const Light_placement& light_place, LNode* curNode, bool unordered) const{
-	noc.reset();
-	const Node& layerT = curNode->layert;
-	len_t B = curNode->num_batch;
-	bool wgt_B = layerT.hasWgtPrevs();
-	len_t curC;
-	// Fetch weight first.
-	if (wgt_B) {
-		// Fetch each prev layer from its ofmap/mem layout
-		curC = 0;
-		const auto& prevs = layerT.getWgtPrevs();
-		FOR_BITSET(it, prevs) {
-			lid_t prev = it;
-			len_t prevC = network->getNode(prev).layer().ofmap_shape().c;
-			if (curNode->get_dirp_set().contains(prev)) {
-				LNode* fromNode = (*(curNode->lnodeList))[prev];
-				const auto& fromLayout = fromNode->get_place_sch().getOfmL();
-				noc.betweenLayout(fromLayout, place.getWgtL(), curC, fromNode->num_batch, B, unordered);
-			}
-			else {
-				// TODO: Change to last layer's memLayout.
-				
-				noc.fromRemoteMem(place.getWgtL(), curC, curC + prevC, light_place.layer_DRAM.at(prev)[2]);
-			}
-			curC += prevC;
-		}
-		assert(curC == layerT.layer().weight_shape().c);
-	}
-	else {
-		noc.fromRemoteMem(place.getWgtL(), light_place.layer_DRAM.at(curNode->getLayer().getid())[1]);
-		noc /= (curNode->wgt_bgrp / B);
-	}
-	if (place.fetch) {
-		// Currently, no ifm multiple fetch, so just mult weight fetch.
-		assert(place.fetch.ifmFetch == 1);
-		if (place.fetch.wgtFetch > 1) {
-			noc *= place.fetch.wgtFetch;
-		}
-	}
-	// Identify eltwise first
-	len_t elt_K = 0, cur_N = 0;
-	if (REF_IS_INSTANCE(layerT.layer(), EltwiseLayer)) {
-		elt_K = layerT.layer().ofmap_shape().c;
-	}
-
-	// Fetch external data from remote MEM
-	curC = layerT.get_external_C();
-	noc.fromRemoteMem(place.getIfmL(), 0, curC, light_place.layer_DRAM.at(curNode->getLayer().getid())[0]);
-	if (elt_K > 0) {
-		if (curC == elt_K) {
-			curC = 0;
-			++cur_N;
-		}
-		else {
-			// TODO: here we have asserted input_C < elt_K for eltwise layer, so its fine.
-			assert(curC <= elt_K);
-		}
-	}
-
-	// Fetch each prev layer from its ofmap/mem layout
-	const auto& prevs = layerT.getIfmPrevs();
-	FOR_BITSET(it, prevs) {
-		lid_t prev = it;
-		len_t prevC = network->getNode(prev).layer().ofmap_shape().c;
-		if (curNode->get_dirp_set().contains(prev)) {
-			LNode* fromNode = (*(curNode->lnodeList))[prev];
-			const auto& fromLayout = fromNode->get_place_sch().getOfmL();
-			noc.betweenLayout(fromLayout, place.getIfmL(), curC, fromNode->num_batch, B, unordered);
-		}
-		else {
-			// TODO: Change to last layer's memLayout.
-			noc.fromRemoteMem(place.getIfmL(), curC, curC + prevC, light_place.layer_DRAM.at(prev)[2]);
-		}
-		curC += prevC;
-		if (elt_K > 0) {
-			if (curC == elt_K) {
-				curC = 0;
-				++cur_N;
-			}
-			else {
-				// TODO: here we have asserted input_C < elt_K for eltwise layer, so its fine.
-				assert(curC <= elt_K);
-			}
-		}
-	}
-	if (elt_K > 0) curC = elt_K * cur_N;
-	assert(curC == layerT.layer().real_ifmap_shape().c);
-
-	// Save to remote mem if necessary
-	if (curNode->to_dram) {
-		noc.toRemoteMem(place.getOfmL(), light_place.layer_DRAM.at(curNode->getLayer().getid())[2]);
-	}
 }
 
 LayerScheme StdLayerEngine::fillin(LNode* curNode, const Light_placement &place,bool calc_noc, bool base){

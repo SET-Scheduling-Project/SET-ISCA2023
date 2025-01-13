@@ -135,7 +135,7 @@ vol_t EyerissMapper::get_ubuf_size() const{
 
 // Codes for main search:
 
-CoreMapper::CoreMapping CoreMapper::genLayerMap(const Layer& layer, const PartSch& part, const FetchSch& fetch, len_t batch_size, bool wgtB){
+CoreMapper::CoreMapping CoreMapper::genLayerMap(const Layer& layer, const PartSch& part, len_t batch_size, bool wgtB){
 	if(REF_IS_INSTANCE(layer, ConvLayer)){
 		// Conv Layer...
 		const ConvLayer& cl=static_cast<const ConvLayer&>(layer);
@@ -143,12 +143,31 @@ CoreMapper::CoreMapping CoreMapper::genLayerMap(const Layer& layer, const PartSc
 		wl.K = DIVCEIL(wl.K, part.K);
 		wl.H = DIVCEIL(wl.H, part.H);
 		wl.W = DIVCEIL(wl.W, part.W);
-		if (fetch) {
-			wl.B = DIVCEIL(wl.B, fetch.B);
-			wl.K = DIVCEIL(wl.K, fetch.K);
-			wl.H = DIVCEIL(wl.H, fetch.H);
-			wl.W = DIVCEIL(wl.W, fetch.W);
+
+		long long npart = num_part;
+		vol_t ofm_size = wl.K * wl.H * wl.W * batch_size;
+		if(num_part < 0){
+			vol_t unit_size = -num_part;
+			npart = DIVCEIL(ofm_size, unit_size);
 		}
+
+		auto min_K = K_hint();
+		auto max_Kcut = wl.K / min_K;
+		if(max_Kcut == 0) ++max_Kcut;
+		len_t min_cuts = DIVCEIL(npart, max_Kcut);
+		if(min_cuts > ofm_size / wl.K) min_cuts = ofm_size / wl.K;
+
+		PartSch tile_part;
+		cidx_t _npart = npart;
+		if(_npart != npart) assert(false); // Consider using larger factor type.
+		auto iter = partEngine.init(_npart, batch_size, wl.K, wl.H, wl.W, tile_part, min_cuts);
+		assert(iter);
+		assert(!(iter.nextPart()));
+
+		wl.H = DIVCEIL(wl.H, tile_part.H);
+		wl.W = DIVCEIL(wl.W, tile_part.W);
+		wl.B = DIVCEIL(wl.B, tile_part.B);
+		wl.K = DIVCEIL(wl.K, tile_part.K);
 		if(REF_IS_INSTANCE(layer, GroupConvLayer)){
 			const GroupConvLayer& gcl=static_cast<const GroupConvLayer&>(cl);
 			const auto& gclWl = gcl.get_workload();
@@ -161,11 +180,12 @@ CoreMapper::CoreMapping CoreMapper::genLayerMap(const Layer& layer, const PartSc
 			wl.nGroup *= wl.B;
 			wl.B = 1;
 		}
+
 		wl.calc_op();
-		CoreMapping m = genMapping(wl);
-		if (fetch) {
-			m *= fetch.size();
-		}
+
+		auto m = genMapping(wl);
+		m *= npart;
+		m.tile_part = tile_part;
 		return m;
 	}else if(REF_IS_INSTANCE(layer, LRLayer)){
 		assert(!wgtB);
@@ -176,26 +196,31 @@ CoreMapper::CoreMapping CoreMapper::genLayerMap(const Layer& layer, const PartSc
 		wl.K = DIVCEIL(wl.K, part.K);
 		wl.H = DIVCEIL(wl.H, part.H);
 		wl.W = DIVCEIL(wl.W, part.W);
-		if (fetch) {
-			batch_size = DIVCEIL(batch_size, fetch.B);
-			wl.K = DIVCEIL(wl.K, fetch.K);
-			wl.H = DIVCEIL(wl.H, fetch.H);
-			wl.W = DIVCEIL(wl.W, fetch.W);
-		}
 		wl.update_op();
 		access_t tot_op = wl.calc_op(batch_size);
 
 		CoreMapping m;
+
+		long long npart = num_part;
+		if(num_part < 0){
+			vol_t ofm_size = wl.K * wl.H * wl.W * batch_size;
+			vol_t unit_size = -num_part;
+			npart = DIVCEIL(ofm_size, unit_size);
+		}
+
+		cidx_t _npart = npart;
+		if(_npart != npart) assert(false); // Consider using larger factor type.
+		auto iter = partEngine.init(_npart, batch_size, wl.K, wl.H, wl.W, m.tile_part);
+		assert(iter);
+		assert(!(iter.nextPart()));
+
 		m.cost.energy = tot_op * base_core.LR_mac_cost;
-		m.cost.time = DIVCEIL(tot_op,base_core.LR_mac_num);
+		m.cost.time = DIVCEIL(tot_op, base_core.LR_mac_num);
 		m.buffer = m.noc = m.ubuf = 0;
 		m.mac = m.cost.energy;
 		m.util = tot_op;
 		m.util /= (m.cost.time * base_core.LR_mac_num);
 		m.tot_util = m.util;
-		if (fetch) {
-			m *= fetch.size();
-		}
 		return m;
 	}else{
 		assert(false);

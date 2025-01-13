@@ -88,7 +88,7 @@ public:
 	const Core& base_core;
 	int num_part = 1;
 	CoreMapper(const Core& c);
-	CoreMapping genLayerMap(const Layer& layer, const PartSch& part, const FetchSch& fetch, len_t batch_size, bool wgtB);
+	CoreMapping genLayerMap(const Layer& layer, const PartSch& part, len_t batch_size, bool wgtB);
 	virtual CoreMapping genMapping(const ConvWl& wl) = 0;
 	const Core& core() const;
 	void set_utime(Layer& l) const;

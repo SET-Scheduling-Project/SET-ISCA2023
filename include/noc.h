@@ -21,12 +21,6 @@ public:
 	static energy_t hop_cost, DRAM_acc_cost;
 	static bw_t DRAM_bw, NoC_bw;
 	static bool unicast_only;
-	static bool interleave;
-	static bool soc;
-	static bool seperate_IO;//whether IO chiplet is seperate
-	static bool calc_noc_control;
-	bool calc_bw;
-	bool is_base;
 private:
 	struct PortInfo{
 		pos_t pos;
@@ -39,6 +33,7 @@ private:
 	static std::vector<PortInfo> port_list;
 	static std::vector<didx_t> il_group_start;
 	static thread_local NoC _noc;
+
 	typedef std::vector<didx_t> GroupVec;
 
 	class HopCount{
@@ -62,6 +57,7 @@ private:
 	};
 
 	// TODO: handle calc_bw=true;
+	bool calc_bw;
 	// TODO: get rid of all static_cast
 	// (may need to change PartSch to cidx_t)
 

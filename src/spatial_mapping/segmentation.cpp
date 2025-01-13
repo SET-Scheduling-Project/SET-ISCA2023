@@ -10,7 +10,7 @@
 
 std::vector<std::pair<vol_t, cidx_t>> ave_core;
 
-Segment_scheme::Segment_scheme(const std::vector<lid_t> &_order, const Bitset &_border, const std::vector<len_t> &_batch, len_t _batch_num){
+Segment_scheme::Segment_scheme(const std::vector<Segment_scheme::lid_t> &_order, const Bitset &_border, const std::vector<len_t> &_batch, len_t _batch_num){
     batch_num = _batch_num;
     layer_num = _order.size()-1;
     ltree = nullptr;
@@ -39,7 +39,11 @@ Segment_scheme::Segment_scheme(lid_t layer_num_, len_t _batch_num, Bitset& input
     schtree_spm = nullptr;
     schtree_fast = nullptr;
     subschtree = nullptr;
+    //oldSchtree = nullptr;
     non_conv_size = not_conv_layers.count();
+    //for(lid_t i=0; i<layer_num_-1; ++i){
+    //    border.set(i);
+    //}
     order.resize(layer_num_);
     id_to_order.resize(layer_num_);
     for(lid_t i=0;i<layer_num_;++i){
@@ -48,6 +52,10 @@ Segment_scheme::Segment_scheme(lid_t layer_num_, len_t _batch_num, Bitset& input
     }
     layer_num = layer_num_ - 1;
     batch.resize(layer_num_);
+    //for(lid_t i=0;i< layer_num_;++i){
+    //    batch[i]=1;
+    //    isNew.set(i);
+    //}
     batch[0]=1;
     isNew.set(0);
 }
@@ -165,10 +173,16 @@ void Segment_scheme::sa_change(){
     int segment_cnt = border.count() + 1;
     int type = rndint(1,100);
     cnt++;
+    /*
+    std::cout << cnt << std::endl;
+    if (cnt == 116) {
+        std::cout << "wrong" << std::endl;
+    }*/
     const len_t max_layerid = order.size()-1;
 
     if(border_cnt == 0 || type<=60){
         int left = rndint(0,max_layerid-1);
+        //puts("flip");
         flip(left,rndint(0,1));
         isNew.set(left);
         isNew.set(left+1);
@@ -179,6 +193,7 @@ void Segment_scheme::sa_change(){
             int batch_tmp = batch[0] * 2;
             if (batch_tmp > batch_num) {
                 sa_change();
+                //std::cout << "invalid" << std::endl;
             }
             else {
                 batch[0] = batch_tmp;
@@ -191,6 +206,7 @@ void Segment_scheme::sa_change(){
             int batch_tmp = batch[tmp] * 2;
             if (batch_tmp > batch_num) {
                 sa_change();
+                //std::cout << "invalid" << std::endl;
             }
             else {
                 batch[tmp] = batch_tmp;
@@ -204,6 +220,7 @@ void Segment_scheme::sa_change(){
             int batch_tmp = batch[0] / 2;
             if (batch_tmp < 1) {
                 sa_change();
+                //std::cout << "invalid" << std::endl;
             }
             else {
                 batch[0] = batch_tmp;
@@ -215,6 +232,7 @@ void Segment_scheme::sa_change(){
             int batch_tmp = batch[tmp] / 2;
             if (batch_tmp < 1) {
                 sa_change();
+                //std::cout << "invalid" << std::endl;
             }
             else {
                 batch[tmp] = batch_tmp;
@@ -233,12 +251,14 @@ void Segment_scheme::sa_change(){
         if(border_v.size() > 0){
             lid_t loc = rndint(0, border_v.size() - 1);
             int p=border_v[loc];
+            //puts("swap");
             swap(p);
             isNew.set(border_v[loc]);
             isNew.set(border_v[loc] + 1);
         }
         else{
             sa_change();
+            //std::cout << "invalid" << std::endl;
         }
     }
     
@@ -257,6 +277,7 @@ void Segment_scheme::sa_change(){
                 offset = rndint(left, right)-border_v[p];
             }
             while(offset == 0);
+            //printf("move %d %d\n",border_v[p],offset);
             move(border_v[p], offset);
             lid_t changed_border = border.find_nth_1(p+1);
             isNew.set(changed_border);
@@ -264,6 +285,7 @@ void Segment_scheme::sa_change(){
         }
         else{
             sa_change();
+            //std::cout << "invalid" << std::endl;
         }
     }
     else if (type == 6) {
@@ -465,6 +487,7 @@ bool Segment_scheme::build_SchTree_fast() {
         schtree_fast = nullptr;
         return false;
     }
+    //ltree->confirm();
     return true;
 }
 
@@ -495,6 +518,13 @@ void Segment_scheme::SA_search_SPM(int iter_num, LTreeNode* root, int childno,bo
 #endif
             place.mutate(Cluster::xlen*Cluster::ylen);
         }
+        else{
+            //subschtree->print_struct("\t");
+            /*auto &sch = subschtree->get_lnode_by_id(0)->get_place_sch();
+            for(auto core: sch.getOfmL()){
+                std::cout << core.first << core.second.x << " " << core.second.y << std::endl;
+            }*/
+        }
     }while(!best_valid);
     Light_placement iter=place, best=place;
     auto iter_cost = subschtree->get_cost();
@@ -503,6 +533,9 @@ void Segment_scheme::SA_search_SPM(int iter_num, LTreeNode* root, int childno,bo
     double T = best_cost.cost()/10;
     double dist = 2*pow(Cluster::xlen*Cluster::ylen, 0.25);
     while(rnd<iter_num){
+        if (rnd==1357) {
+            //std::cout << rnd << std::endl;
+        }
         place = iter;
         place.mutate(std::max(1.0,dist));
         auto valid = build_subSchTree(root, place, true, base);
@@ -515,18 +548,28 @@ void Segment_scheme::SA_search_SPM(int iter_num, LTreeNode* root, int childno,bo
             iter_cost = now_cost;
 		}
 		if(iter_cost.cost() < best_cost.cost()){
+            
 			best_cost = iter_cost;
             best = iter;
 		}
 		if(rnd%10==0){
 			T *= 0.99;
             dist *= 0.998;
+			//rnd = 0;
 		}
+        if(rnd%100==0){
+            //fprintf(stderr,"SPM rnd = %d, best_cost = %lg, iter_cost = %lg, now_cost = %lg\n",rnd,best_cost.cost(),iter_cost.cost(),now_cost.cost());
+        }
         ++rnd;
     }
     place=best;
     build_subSchTree(root, place,true ,base);
+    //std::cout <<"normal mode dram access = " << subschtree->get_noc().get_tot_DRAM_acc() << std::endl;
     time_t end_time = time(nullptr);
+    
+    //subschtree->print_struct("\t");
+    //std::cout << subschtree->get_cost()<<std::endl;
+    //std::cout << "time = " << end_time-start_time << std::endl;
 }
 
 void mode_control(bool cluster_base, bool calc_noc, bool interleave) {
@@ -595,21 +638,41 @@ void SA_search(int iter_num,bool base,bool fast_mode){
     double T = best_cost.cost()/10;
     vol_t not_equal = 0;
 	while(rnd<iter_num){
+        //ave_core.clear();
+        //ave_core.reserve(layer_num);
         now.clear();
 		now = iter;
         now.copy_from(iter);
         now.sa_change();
         now.build_LTree_by_segmentation();
         bool tmp_normal = now.build_SchTree(false,iter.schtree,base,!base, fast_mode);
-        if (!tmp_normal) {
+        //now.build_LTree_by_segmentation();
+        //bool tmp_fast = now.build_SchTree_fast();
+        //if (tmp_normal != tmp_fast) {
+        //    std::cout << "iter = " << rnd << " normal = " << tmp_normal /*<< " fast= " << tmp_fast*/ << std::endl;
+            //assert(false);
+        //}
+        if (!tmp_normal/*now.build_SchTree()*/) {
             continue;
         }
         SchNode::SchCost now_cost = now.schtree->get_cost();
+        //vol_t fast_cost_now = now.schtree_fast->get_core_mul_data();//now.schtree_fast->get_dram_access() * now.schtree_fast->get_cost().time;
+        /*
+        if ((iter_cost.cost() <= now_cost.cost()) != (fast_cost_iter <= fast_cost_now)) {
+            //std::cout << "iter = " << rnd << "cost_not_equal" << std::endl;
+            not_equal++;
+        }
+*/
+        //if ((iter.schtree->get_noc().get_tot_hops() <= now.schtree->get_noc().get_tot_hops()) != (fast_cost_iter <= fast_cost_now)) {
+            //std::cout << "iter = " << rnd << "cost_not_equal" << std::endl;
+        //   not_equal++;
+        //}
 		if(sa_accept(iter_cost, now_cost, T)){
             iter.clear();
 			iter = now;
             iter.copy_from(now);
             iter_cost = now_cost;
+            //fast_cost_iter = fast_cost_now;
         }
 		if(iter_cost.cost() < best_cost.cost()){
 			best_cost = iter_cost;
@@ -619,6 +682,7 @@ void SA_search(int iter_num,bool base,bool fast_mode){
 		}
 		if(1){
 			T *= 0.999;
+			//rnd = 0;
 		}
          if(rnd%50==0||iter_num-rnd<=50){
             fprintf(stderr,"rnd = %d, best_cost = %lg, iter_cost = %lg, now_cost = %lg\n",rnd,best_cost.cost(),iter_cost.cost(),now_cost.cost());
@@ -643,17 +707,38 @@ void SA_search(int iter_num,bool base,bool fast_mode){
         std::cout << best.schtree_spm->get_cost() << std::endl;
         std::cout << "time = " << end_time - start_time << std::endl;
 
+        //best_res->print_struct("\t");
+        
+        //std::cout << "fuse_num = " << best.get_fuse_loc().count() << std::endl;
+        //std::cout << "not equal = " << not_equal << std::endl;
+        //std::cout <<"fast mode dram access = "<< best.schtree_fast->get_dram_access() << std::endl;
+        //std::cout <<"normal mode dram access = " << best.schtree->get_noc().get_tot_DRAM_acc() << std::endl;
+        //std::cout <<"fast mode time = " << best.schtree_fast->get_cost().time << std::endl;
         return;
     }
     else {
         bool builded;
         builded = best.build_SchTree(false, nullptr, false, true);
         assert(builded);
+        //assert(best.build_SchTree_fast());
         best.schtree->print_struct("\t");
+        //std::cout <<"fast mode dram access = "<< best.schtree_fast->get_dram_access() << std::endl;
+        //std::cout << "normal mode dram access = " << best.schtree->get_noc().get_tot_DRAM_acc() << std::endl;
+        //std::cout <<"fast mode time = " << best.schtree_fast->get_cost().time << std::endl;
+       
+
+        //best_res->print_struct("\t");
+
         std::cout << best.schtree->get_cost() << std::endl;
+        //std::cout << "fuse_num = " << best.get_fuse_loc().count() << std::endl;
+        //std::cout << "not equal = " << not_equal << std::endl;
         time_t end_time = time(nullptr);
         std::cout << "time = " << end_time - start_time << std::endl;
 
+        /*auto &sch = best.schtree->get_lnode_by_id(0)->get_place_sch();
+        for(auto core: sch.getOfmL()){
+            std::cout << core.first << " " << core.second.x << " " << core.second.y << std::endl;
+        }*/
         start_time = time(nullptr);
         best.SA_search_SPM(iter_num);
         builded = best.build_SchTree(true);
@@ -663,6 +748,16 @@ void SA_search(int iter_num,bool base,bool fast_mode){
         best.schtree_spm->print_struct("\t");
         std::cout << best.schtree_spm->get_cost() << std::endl;
         std::cout << "time = " << end_time - start_time << std::endl;
+        //std::cout << "normal mode dram access = " << best.schtree_spm->get_noc().get_tot_DRAM_acc() << std::endl;
+        //SchNode* best_res = best.schtree_spm;
+        //end_time = time(nullptr);
+
+        //best_res->print_struct("\t");
+        //std::cout << best_res->get_cost() << std::endl;
+        //std::cout << "fuse_num = " << best.get_fuse_loc().count() << std::endl;
+        //std::cout << "not equal = " << not_equal << std::endl;
+
+        
     }
 }
 
@@ -701,6 +796,7 @@ void overall_search(int iter_num, bool full){
                     }
                 }
                 if(ok)break;
+                //std::cout << 1;
             }
             while(1);
             iter.flip(p,true);
@@ -722,23 +818,26 @@ void overall_search(int iter_num, bool full){
         now.build_LTree_by_segmentation();
         bool tmp_normal = now.build_SchTree(false,iter.schtree);
 
-        if (!tmp_normal) {
+        if (!tmp_normal/*now.build_SchTree()*/) {
             continue;
         }
         std::cout << rnd << std::endl;
         auto since = clock();
         now.layer_Dram.clear();
         now.SA_search_SPM(full?2*iter_num:spm_iter);
+        //printf("iter = %d, time = %lf\n",spm_iter,(double)(clock()-since)/CLOCKS_PER_SEC);
         bool builded = now.build_SchTree(true); 
         assert(builded);
 
         SchNode::SchCost now_cost = now.schtree_spm->get_cost();
-        
+        //SchNode::SchCost now_cost = now.schtree->get_cost();
+
         if(sa_accept(iter_cost, now_cost, T)){
             iter.clear();
 			iter = now;
             iter.copy_from(now);
             iter_cost = now_cost;
+            //fast_cost_iter = fast_cost_now;
         }
 
 		if(iter_cost.cost() < best_cost.cost()){
@@ -749,6 +848,7 @@ void overall_search(int iter_num, bool full){
 		}
 		if(1){
 			T *= 0.999;
+			//rnd = 0;
 		}
         if(rnd%50==0||iter_num-rnd<=50){
             fprintf(stderr,"rnd = %d, best_cost = %lg, iter_cost = %lg, now_cost = %lg\n",rnd,best_cost.cost(),iter_cost.cost(),now_cost.cost());
@@ -764,13 +864,22 @@ void overall_search(int iter_num, bool full){
     bool builded = best.build_SchTree();
     assert(builded);
     
+    //assert(best.build_SchTree_fast());
+    //std::cout <<"fast mode dram access = "<< best.schtree_fast->get_dram_access() << std::endl;
     std::cout << "normal mode dram access = " << best.schtree->get_noc().get_tot_DRAM_acc() << std::endl;
+    //std::cout <<"fast mode time = " << best.schtree_fast->get_cost().time << std::endl;
     time_t end_time = time(nullptr);
     
+    //best_res->print_struct("\t");
     std::cout << best.schtree->get_cost()<<std::endl;
     std::cout << "fuse_num = " << best.get_fuse_loc().count() << std::endl;
     std::cout << "not equal = " << not_equal << std::endl;
     std::cout << "time = " << end_time-start_time << std::endl;
+
+    /*auto &sch = best.schtree->get_lnode_by_id(0)->get_place_sch();
+    for(auto core: sch.getOfmL()){
+        std::cout << core.first << " " << core.second.x << " " << core.second.y << std::endl;
+    }*/
 
     best.SA_search_SPM(2*iter_num);
     builded = best.build_SchTree(true);
@@ -784,13 +893,21 @@ void overall_search(int iter_num, bool full){
     }
     builded = best.build_SchTree(true,nullptr);
     assert(builded);
-    
+    //std::cout <<"normal mode dram access = " << best.schtree_spm->get_noc().get_tot_DRAM_acc() << std::endl;
+
     end_time = time(nullptr);
     
     best.schtree_spm->print_struct("\t");
     std::cout << best.schtree_spm->get_cost()<<std::endl;
+    //std::cout << "fuse_num = " << best.get_fuse_loc().count() << std::endl;
+    //std::cout << "not equal = " << not_equal << std::endl;
     std::cout << "time = " << end_time-start_time << std::endl;
     fflush(stderr);
+    /*
+    best.fuse_loc.set(6);
+    best.fuse_loc.reset(7);
+    std::cout << get_res(best)->get_cost() << std::endl;
+    get_res(best)->print_struct("\t");*/
 }
 
 
@@ -965,6 +1082,7 @@ Segment_scheme* DP_search(int iter_num, bool base,bool fast_mode) {
         assert(builded);
     }
     else {
+        //assert(iter->build_SchTree(false, nullptr, false, true));
         iter->build_SchTree(false, nullptr, false, true,false);
         std::cout << "Schtree (before SPM search): " << std::endl;
         std::cout << "Cost (before SPM search): " << iter->schtree->get_cost() << std::endl;
