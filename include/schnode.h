@@ -35,12 +35,10 @@ public:
 	typedef const SchNode* csn_ptr;
 	typedef SchNode& sn_ref;
 	typedef std::deque<sn_ptr> sn_vec;
-
-	typedef Cut* cut_ptr;
-
 	typedef std::unordered_map<lid_t, LNode*> nodeList_t;
 	typedef LTreeNode::NodeType NodeType;
 
+	typedef Cut* cut_ptr;
 	struct SchCost{
 		energy_t energy;
 		cycle_t time;
@@ -66,6 +64,8 @@ protected:
 	bool valid;
 	const NodeType type;
 	const len_t num_batch;
+	bool is_base;
+	len_t wgt_bgrp; // Size of weight batch_group.
 	const Cluster cluster;
 	const Cut* const parent;
 	SchCost cost, core_cost;

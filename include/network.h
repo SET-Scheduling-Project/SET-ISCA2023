@@ -54,15 +54,17 @@ private:
 	const Bitset ifmPrevs;
 	const Bitset wgtPrevs;
 	const Bitset prevs;
+	const lid_t id;
 	//const layer_set prev_order;
 	Bitset nexts;
 	len_t external_C;
 public:
-	Node(const Layer* _l, const Bitset& _ifmPrevs, len_t _external_C, bwidth_t width = 0, const Bitset& _wgtPrevs = {});
+	Node(const Layer* _l, const Bitset& _ifmPrevs, len_t _external_C, bwidth_t width = 0, const Bitset& _wgtPrevs = {}, lid_t _id = -1);
 	Node(const Node& n) = delete;
 	Node(Node&& n)=default;
 	const Layer& layer() const;
 	const std::string& name() const;
+	lid_t getid() const;
 	const Bitset& getIfmPrevs() const;
 	const Bitset& getWgtPrevs() const;
 	const Bitset& getPrevs() const;

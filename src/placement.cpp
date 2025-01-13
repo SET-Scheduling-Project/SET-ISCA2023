@@ -27,6 +27,25 @@ void PlaceSch::finalize(){
 	permuteOrder.reset();
 }
 
+void PlaceSch::initPlacement_by_light(const Cluster& cluster, const Light_placement& place, lid_t layerno){
+	//TODO
+	using plen_t = PartSch::partlen_t;
+
+	pos_t* curIdx = permuteOrder.get();
+
+	order[0] = 1;
+	order[1] = 0;
+	order[2] = 2;
+	order[3] = 3;
+
+	cidx_t idx = 0;
+	for(auto core: place.get_placement()){
+		if(core.layerno==layerno){
+			*(curIdx++) = cluster[idx++];
+		}
+	}
+}
+
 void PlaceSch::initPlacement(const Cluster& cluster){
 	using plen_t = PartSch::partlen_t;
 

@@ -83,6 +83,8 @@ std::ostream& operator<<(std::ostream& out, const std::uint8_t& num);
 
 // Function, struct and global variables definition.
 
+extern vol_t ofm_ubuf_vol;
+
 extern std::function<cost_t(energy_t, cycle_t)> cost_func;
 
 extern cost_t calc_cost(energy_t energy, cycle_t time);

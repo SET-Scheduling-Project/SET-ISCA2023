@@ -23,7 +23,7 @@ struct LayerScheme{
 
 class LayerEngine{
 public:
-	virtual LayerScheme search(LNode* curNode) const = 0;
+	virtual LayerScheme search(LNode* curNode, bool calc_noc) const = 0;
 	// TODO: put it somewhere else.
 	virtual vol_t get_ubuf_size() const = 0;
 	virtual LayerScheme fillin(LNode* curNode, const Light_placement &place, bool calc_noc = true,bool base = false) = 0;
@@ -35,7 +35,7 @@ class StdLayerEngine : public LayerEngine{
 public:
 	StdLayerEngine(CoreMapper* _mapper);
 	virtual vol_t get_ubuf_size() const override;
-	virtual LayerScheme search(LNode* curNode) const override;
+	virtual LayerScheme search(LNode* curNode, bool calc_noc) const override;
 	void initLayouts(PlaceSch& place, const Node& layerT, const fmap_shape& ofmShape, len_t B) const;
 	void initLayouts(PlaceSch& place, const Node& layerT, const fmap_shape& ofmShape, len_t B, const Light_placement &light_place) const;
 	void calcNoC(NoC& noc, const PlaceSch& place, MemLayouts& memLayouts, LNode* curNode) const;

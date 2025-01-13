@@ -17,8 +17,8 @@ const fmap_shape& InputData::get_shape() const{
 	return data_shape;
 }
 
-Node::Node(const Layer* _l, const Bitset& _ifmPrevs, len_t _external_C, bwidth_t width, const Bitset& _wgtPrevs)
-	:l(_l), ifmPrevs(_ifmPrevs), wgtPrevs(_wgtPrevs), prevs(_ifmPrevs | _wgtPrevs), external_C(_external_C){
+Node::Node(const Layer* _l, const Bitset& _ifmPrevs, len_t _external_C, bwidth_t width, const Bitset& _wgtPrevs, lid_t _id)
+	:l(_l), ifmPrevs(_ifmPrevs), wgtPrevs(_wgtPrevs), prevs(_ifmPrevs | _wgtPrevs), external_C(_external_C), id(_id){
 	if(width > 0) const_cast<Layer*>(_l)->set_bitwidth(width);
 }
 
@@ -28,6 +28,10 @@ const Layer& Node::layer() const{
 
 const std::string& Node::name() const{
 	return l->get_name();
+}
+
+lid_t Node::getid() const{
+    return id;
 }
 
 const Bitset& Node::getIfmPrevs() const{

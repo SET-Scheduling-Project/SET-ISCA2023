@@ -7,6 +7,7 @@
 
 #include "datalayout.h"
 #include "partition.h"
+#include "spatial_mapping/light_placement.h"
 #include "util.h"
 
 class Cluster;
@@ -15,6 +16,7 @@ class Cluster;
 
 struct PlaceSch{
 	PartSch part;
+	FetchSch fetch;
 	// An order of 1,2,3,0 means B,H,W,K.
 	/*struct{
 		std::uint8_t o1:2, o2:2, o3:2, o4:2;
@@ -29,6 +31,7 @@ struct PlaceSch{
 	PlaceSch& operator=(PlaceSch&& sch) = default;
 	// PlaceSch(len_t _batch);
 	void finalize();
+	void initPlacement_by_light(const Cluster& cluster, const Light_placement& place, lid_t layerno);
 	void initPlacement(const Cluster& cluster);
 	void update(PlaceSch&& sch);
 	DataLayout& getIfmL();
