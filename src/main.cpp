@@ -89,7 +89,7 @@ int main(int argc, char** argv){
 
 	EyerissCore core2(s2, LR_mac_num, LR_mac_cost, eBus, eBuf);
 	EyerissMapper mapper2(core2);
-	int mm, nn, xx, yy, ss, bb, rr, ff;
+	int mm, nn, xx, yy, ss, bb, rr, ff, unicast_only;
 	bw_t bw;
 	std::string IR_name = "";
 
@@ -104,7 +104,7 @@ int main(int argc, char** argv){
 		//in.close();
 	}*/
 
-	std::cin >> mm >> nn >> bb >> xx >> yy >> ss >> rr >> ff >> bw;
+	std::cin >> mm >> nn >> bb >> xx >> yy >> ss >> rr >> ff >> bw >> unicast_only;
 	/*
 		mm: 0: polarcore 1: eyeriss core
 		nn: network options
@@ -116,7 +116,9 @@ int main(int argc, char** argv){
 		bw: bandwidth (in ??) 
 	*/
 	// mm=0;nn=2;bb=64;xx=8;yy=8;ss=4;rr=100;ff=1;bw=24;
-	// 0 13 2 4 4 2 50 1 24
+	// 0 13 2 4 4 2 50 1 24 1
+
+	NoC::unicast_only = unicast_only;
 
 	if(argc > 1){
 		std::filesystem::create_directories("results/json/");

@@ -137,6 +137,7 @@ protected:
 	static std::vector<DRAM> DRAM_list;
 	static std::map<Json::Value,tfid_t> DRAM_ofmap_tfid,DRAM_weight_tfid;
 	static csn_ptr root;
+	static tfid_t unique_id_for_unicast;
 	void IR_gen_init() const;
 	void check_curr(cidx_t num_cores) const;
 

@@ -15,6 +15,7 @@ std::vector<std::list<Json::Value> > SchNode::curr_ifmap, SchNode::curr_weight, 
 std::vector<DRAM> SchNode::DRAM_list;
 std::map<Json::Value,tfid_t> SchNode::DRAM_ofmap_tfid,SchNode::DRAM_weight_tfid;
 std::map<std::string,lid_t> SchNode::name_to_id;
+tfid_t SchNode::unique_id_for_unicast;
 
 const Cut* LNode::get_lca(const LNode* node1, const LNode* node2){
 	const Cut* lca = node2->parent;
@@ -257,6 +258,9 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				key["layer_name"] = layert.name();
 				key["lower"] = weight["lower"];
 				key["upper"] = weight["upper"];
+				if(NoC::unicast_only){
+					key["unique_id"] = unique_id_for_unicast++;
+				}
 				Json::Value destination;
 				destination["type"] = "core";
 				destination["id"] = core_id;
@@ -364,7 +368,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 								else{
 									weight_max_from_workload_id = std::max(weight_max_from_workload_id, prev_workload_id);
 								}
-								if(ofmapid[prev_workload_id].count(intersect)){
+								if(!NoC::unicast_only&&ofmapid[prev_workload_id].count(intersect)){
 									ifmap["transfer_id"] = workload_list[from_id][prev_wlid]["ofmap"][ofmapid[prev_workload_id][intersect]]["transfer_id"];
 								}
 								else{
@@ -387,7 +391,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 								destination["workload_id"] = workload["workload_id"];
 								destination["layer_name"] = layert.name();
 
-								if(ofmapid[prev_workload_id].count(intersect)){
+								if(!NoC::unicast_only&&ofmapid[prev_workload_id].count(intersect)){
 									workload_list[from_id][prev_wlid]["ofmap"][ofmapid[prev_workload_id][intersect]]["destination"].append(destination);
 								}
 								else{
@@ -396,7 +400,9 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 									ofmap["transfer_id"] = ifmap["transfer_id"];
 									ofmap["size"] = intersect.size()*8;
 									ofmap["destination"].append(destination);
-									ofmapid[prev_workload_id][intersect] = workload_list[from_id][prev_wlid]["ofmap"].size();
+									if(!NoC::unicast_only){
+										ofmapid[prev_workload_id][intersect] = workload_list[from_id][prev_wlid]["ofmap"].size();
+									}
 									workload_list[from_id][prev_wlid]["ofmap"].append(ofmap);
 								}
 							}
@@ -431,6 +437,9 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 						key["source_layer_name"] = node.name();
 						key["destination_layer_name"] = layert.name();
 						key["type"] = layert.getIfmPrevs().contains(layerno) ? "ifmap" : "weight";
+						if(NoC::unicast_only){
+							key["unique_id"] = unique_id_for_unicast++;
+						}
 
 						bool recorded = DRAM_ofmap_tfid.count(key) > 0;
 						tfid_t ofmap_transfer_id = recorded ? DRAM_ofmap_tfid[key] : transferid_cnt++;
@@ -473,7 +482,7 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 									source["core_id"] = from_id;
 									source["workload_id"] = prev_workload_id;
 
-									if(ofmapid[prev_workload_id].count(prev_range)){
+									if(!NoC::unicast_only&&ofmapid[prev_workload_id].count(prev_range)){
 										transfer_id = workload_list[from_id][prev_wlid]["ofmap"][ofmapid[prev_workload_id][prev_range]]["transfer_id"].asUInt();
 										source["transfer_id"] = transfer_id;
 										if(!SchNode::to_dram[prev_workload_id]){
@@ -492,7 +501,9 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 										ofmap["transfer_id"] = transfer_id;
 										ofmap["size"] = prev_range.size() * 8;
 										SchNode::to_dram[workload_list[from_id][prev_wlid]["workload_id"].asUInt()] = true;
-										ofmapid[prev_workload_id][prev_range] = workload_list[from_id][prev_wlid]["ofmap"].size();
+										if(!NoC::unicast_only){
+											ofmapid[prev_workload_id][prev_range] = workload_list[from_id][prev_wlid]["ofmap"].size();
+										}
 										workload_list[from_id][prev_wlid]["ofmap"].append(ofmap);
 									}
 									for(auto ilgroupid: lnode->get_oMemLayout().get_layouts()){
@@ -572,6 +583,9 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				key["destination_layer_name"] = layert.name();
 				key["lower"] = ifmap["lower"];
 				key["upper"] = ifmap["upper"];
+				if(NoC::unicast_only){
+					key["unique_id"] = unique_id_for_unicast++;
+				}
 
 				bool recorded = DRAM_ofmap_tfid.count(key) > 0;
 				tfid_t transfer_id = recorded ? DRAM_ofmap_tfid[key] : transferid_cnt++;
@@ -823,7 +837,9 @@ void LNode::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<
 				}
 			}
 			
-			ofmapid.resize(workload_cnt);
+			if(!NoC::unicast_only){
+				ofmapid.resize(workload_cnt);
+			}
 			from_core.push_back(from_other_core);
 			weight_from_core.push_back(weight_from_other_core);
 			SchNode::to_dram.push_back(false);
