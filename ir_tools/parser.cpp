@@ -17,8 +17,8 @@ int main(int argc, char** argv){
 	Json::Value max_workload;
 	int max_buffer=0;
 	Json::StyledWriter writer;
-	int xlen = IR["xlen"].asUInt();
-	int ylen = IR["ylen"].asUInt();
+	int xlen = IR["metadata"]["xlen"].asUInt();
+	int ylen = IR["metadata"]["ylen"].asUInt();
 	for(int i=0;i<ylen*(xlen+2);++i){
 		if(i%(xlen+2) && i%(xlen+2) != xlen+1){
 			Json::Value &wlist = IR[std::to_string(i)];
@@ -44,7 +44,7 @@ int main(int argc, char** argv){
 			int timestamp = 0;
 			std::map<Json::Value, int> last, now, no;
 			Json::Value input;
-			input["top_batch_cut"] = IR["top_batch_cut"];
+			input["top_batch_cut"] = IR["metadata"]["top_batch_cut"];
 			int blockno = 0;
 			for(Json::Value &wl : wlist){
 				++timestamp;

@@ -109,6 +109,7 @@ public:
 	void toRemoteMem_const(const UniqueLayout& from, const MemLayout& to);
 	void betweenLayout(const UniqueLayout& from, const DataLayout& to, len_t fromCOffset, len_t fromB, len_t toB);
 
+	static const std::vector<PortInfo>& get_port_list();
 	hop_t get_tot_hops() const;
 	access_t get_tot_DRAM_acc() const;
 	energy_t get_hop_cost() const;

@@ -178,13 +178,19 @@ Json::Value SchNode::IR_gen() const{
 			ret[std::to_string(i)]=workload_list[i];
 		}
 	}
-	ret["top_batch_cut"] = root->type != SchNode::NodeType::L ? dynamic_cast<const Cut*>(root)->get_num_bgrp() : 1;
+	ret["metadata"]["top_batch_cut"] = root->type != SchNode::NodeType::L ? dynamic_cast<const Cut*>(root)->get_num_bgrp() : 1;
 	for(didx_t ilgroupid=0; ilgroupid<DRAM_list.size(); ++ilgroupid){
 		auto &dramir = DRAM_list[ilgroupid].get_IR();
 		ret["DRAM"][std::to_string(ilgroupid)]=dramir;
 	}
-	ret["xlen"] = cluster.xlen;
-	ret["ylen"] = cluster.ylen;
+	ret["metadata"]["xlen"] = cluster.xlen;
+	ret["metadata"]["ylen"] = cluster.ylen;
+	auto& port_list = NoC::get_port_list();
+	for(dramid_t port_id = 0; port_id < port_list.size(); ++port_id){
+		auto& pos=ret["metadata"]["DRAM"][std::to_string(port_id)];
+		pos["x"]=port_list[port_id].pos.x;
+		pos["y"]=port_list[port_id].pos.y;
+	}
 	return ret;
 }
 

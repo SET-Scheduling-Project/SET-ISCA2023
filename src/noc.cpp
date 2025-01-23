@@ -405,6 +405,10 @@ void NoC::set_interleave(const std::vector<std::vector<std::pair<didx_t, didx_t>
 	il_group_num = ngroups;
 }
 
+const std::vector<NoC::PortInfo>& NoC::get_port_list(){
+    return port_list;
+}
+
 NoC::hop_t NoC::get_tot_hops() const{
 	return tot_hops;
 }
