@@ -1,3 +1,10 @@
+/* This file contains
+ *	pos_t:      Represents the position of a core
+ *  fmap_shape: Represents the shape of fmap (C, H, W)
+ *  fmap_range: Represents the range of a data block (C, B, H, W)
+ *  Helper functions, type definitions, etc.
+ */
+
 #ifndef UTIL_H
 #define UTIL_H
 
@@ -8,6 +15,7 @@
 #include <iostream>
 
 
+// #define NOT_GEN_IR
 #define MAX_CHIPS 258
 
 // Need to guarantee that x is not 0
@@ -87,12 +95,14 @@ extern len_t* part_intv(len_t tot_len, len_t ncuts);
 struct pos_t{
 	typedef std::uint16_t pos_hash_t;
 	mlen_t x,y;
+
 	bool operator<(const pos_t& other) const;
 	bool operator==(const pos_t& other) const;
 	bool operator>(const pos_t& other) const;
 	bool operator<=(const pos_t& other) const;
 	bool operator>=(const pos_t& other) const;
 	bool operator!=(const pos_t& other) const;
+
 	friend std::ostream& operator<<(std::ostream& os, const pos_t& pos);
 };
 
@@ -105,60 +115,52 @@ struct pos_hash {
 struct fmap_shape{
 	len_t c, h, w;
 	vol_t size;
+
 	fmap_shape()=default;
 	fmap_shape(len_t _c, len_t _h, len_t _w=0);
+
 	bool operator==(const fmap_shape& other) const;
+
 	void update_size();
 	vol_t tot_size(len_t batch_size) const;
+
 	friend std::ostream& operator<<(std::ostream& os, const fmap_shape& shape);
 };
+
 /* the range is a left-closed & right-opened interval
  * i.e. [from.X, to.X)
  */
 struct fmap_range{
 	struct dim_range{
 		len_t from, to;
+
 		bool operator<(const dim_range& other) const;
 		bool operator==(const dim_range& other) const;
 		bool operator!=(const dim_range& other) const;
 		dim_range& operator+=(const len_t& offset);
 		dim_range& operator-=(const len_t& offset);
+
 		bool is_empty() const;
 		vol_t size() const;
 		dim_range intersect(const dim_range& other) const;
+
 		friend std::ostream& operator<<(std::ostream& os, const dim_range& range);
 	}c, b, h, w;
+
 	fmap_range()=default;
 	fmap_range(const dim_range& _c, const dim_range& _b, const dim_range& _h, const dim_range& _w);
 	explicit fmap_range(const fmap_shape& shape, len_t B = 1);
-	const dim_range& get_range(std::uint8_t idx) const;
-	vol_t size() const;
+
 	bool operator<(const fmap_range& other) const;
 	bool operator==(const fmap_range& other) const;
-	fmap_range intersect(const fmap_range& other) const;
+
+	vol_t size() const;
 	bool is_empty() const;
+
+	const dim_range& get_range(std::uint8_t idx) const;
+	fmap_range intersect(const fmap_range& other) const;
+
 	friend std::ostream& operator<<(std::ostream& os, const fmap_range& range);
 };
 
-//int divceil(int m, int n);
-/*
-enum class LoopType : std::uint8_t{
-	K,
-	C,
-	R,
-	S,
-	H,
-	W,
-	N,
-	NUM
-};
-
-struct Loop{
-	len_t cnt;
-	//len_t
-	// Last cnt
-	//len_t r:28;
-	LoopType type:4;
-};
-*/
 #endif // UTIL_H

@@ -30,6 +30,8 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 	// The final scheme
 	LayerScheme layerSch;
 
+	/* ########## Constant infos ########## */
+
 	// Info extracted from curNode
 	const Cluster& cluster = curNode->cluster;
 	const Node& layerT = curNode->layert;
@@ -38,19 +40,19 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 	len_t totBatch = LNode::tot_batch;
 	len_t B = curNode->num_batch;
 	bool wgt_B = layerT.hasWgtPrevs();
-	/*
-	len_t K = ofmShape.c;
-	len_t H = ofmShape.h;
-	len_t W = ofmShape.w;
-	*/
+
 	cidx_t numCores = cluster.num_cores();
 	const Core::Buffer& ubuf = mapper->core().ubuf();
 	vol_t totUbufSize = ubuf.Size * numCores;
 
-	// Current scheme
+	/* ########## Current scheme ########## */
+
 	SchNode::SchCost curCost;
-	PlaceSch placeSch;
+	CoreMapper::CoreMapping tileSch;
+	// Bandwidth is only calculated in the final scheme (Sec. Update optimal scheme)
 	NoC noc(false);
+
+	PlaceSch placeSch;
 	pos_t* permOrder = new pos_t[numCores];
 	placeSch.permuteOrder.reset(permOrder);
 	placeSch.ifmLayout = std::make_unique<StdDataLayout>(numCores, permOrder);
@@ -59,34 +61,32 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 	else
 		placeSch.wgtLayout = std::make_unique<StdDataLayout>(0, nullptr);
 	placeSch.ofmLayout = std::make_unique<StdULayout>(numCores, permOrder);
-	// TODO: change interleaving into 1-2 remote mems.
-	/*
-	if(curNode->to_dram){
-		// TODO: change interleaving into 1-2 remote mems.
-		fmap_range ofmRange(ofmShape, totBatch);
-		placeSch.memLayout = std::make_unique<MemULayout>(ofmRange, NoC::dram_list.data(), NoC::dram_list.size());
-		layerSch.place.memLayout = std::make_unique<MemULayout>(ofmRange, NoC::dram_list.data(), NoC::dram_list.size());
-	}
-	*/
 
 	PartSch& partSch = placeSch.part;
-	CoreMapper::CoreMapping tileSch;
+
+	/* ########## Search iterations ########## */
 
 	// For ubuf energy
 	energy_t ubufOfm = ofmShape.tot_size(B) * ubuf.RCost;
 	energy_t ubufTotal;
 
+	// Minimal cuts on ifmap. Ifmap tile should not use too much ubuf.
 	len_t minCuts = 0;
 	if(REF_IS_INSTANCE(layer, ConvLayer) && !REF_IS_INSTANCE(layer, GroupConvLayer))
 		minCuts = static_cast<len_t>(layer.real_ifmap_shape().tot_size(B) / (totUbufSize*0.8) + 1);
+
+	// Iterator over all valid partitions.
 	auto partIter = partEngine.init(numCores, B, layerT, partSch, minCuts);
 	if(!partIter){
+		// No partition found!
 		return layerSch;
 	}
+
+	// Iter all partitions.
 	do{
 		assert(partSch.size() == static_cast<unsigned>(numCores));
 
-		// Update placeSch
+		// Init partition
 		initLayouts(placeSch, layerT, ofmShape, B);
 
 		// Estimate buffer usage
@@ -104,44 +104,67 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 		// Calc ubuf energy
 		// TODO: default to not pinning weights.
 		energy_t ubufWgt = placeSch.wgtLayout->totalSize() * ubuf.WCost;
+		// weight ubuf energy should only count once,
+		// thus divided by different batches.
 		if(!wgt_B) ubufWgt /= (totBatch / B);
+
 		ubufTotal = ubufWgt + ubufOfm;
 		ubufTotal += placeSch.ifmLayout->totalSize() * ubuf.WCost;
 		curCost.energy += ubufTotal;
 
-		// Search for placement.
+		// Iterate over all placements.
 		auto placeIter = placeEngine.init(placeSch);
-		// if(!placeIter) continue;
+		// assert(placeIter);
 		do{
+			// Init placement
 			placeSch.initPlacement(cluster);
 			static_cast<StdDataLayout&>(placeSch.getIfmL()).setCPosArr();
 			static_cast<StdDataLayout&>(placeSch.getWgtL()).setCPosArr();
+
 			calcNoC(noc, placeSch, curNode);
+
+			cycle_t nocTime = noc.get_time();
+
 			SchNode::SchCost curCostAll = curCost;
 			curCostAll.energy += noc.get_cost();
-			cycle_t nocTime = noc.get_time();
 			curCostAll.time = MAX(curCostAll.time, nocTime);
+
+			// Update optimal cost
 			if(curCostAll.cost() < layerSch.totCost.cost()){
 				layerSch.totCost = curCostAll;
 				layerSch.extUbufEnergy = ubufTotal;
 				layerSch.tileSch = tileSch;
 				layerSch.place.update(std::move(placeSch));
 			}
-		// TODO: add cur_cost.cost back.
-		}while(placeIter.nextPlace(/*cur_cost.cost()*/));
-	}while(partIter.nextPart(/*cur_cost.cost()*/));
+		}while(placeIter.nextPlace(/*curCost.cost()*/));
+	}while(partIter.nextPart(/*curCost.cost()*/));
+
+	/* ########## Update optimal scheme ########## */
+
 	if(layerSch.isValid()){
+		// Reuse allocated array
 		layerSch.place.ifmLayout = std::move(placeSch.ifmLayout);
 		layerSch.place.wgtLayout = std::move(placeSch.wgtLayout);
 		layerSch.place.ofmLayout = std::move(placeSch.ofmLayout);
 		layerSch.place.permuteOrder = std::move(placeSch.permuteOrder);
+
+		/* ##### Re-calculate placement scheme & NoC ##### */
+
+		// Init partition
 		initLayouts(layerSch.place, layerT, ofmShape, B);
+
+		// Init placement
 		layerSch.place.initPlacement(cluster);
 		static_cast<StdDataLayout&>(layerSch.place.getIfmL()).setCPosArr();
 		static_cast<StdDataLayout&>(layerSch.place.getWgtL()).setCPosArr();
+
+		// Finalize layerSch.place
 		layerSch.place.finalize();
+
+		// Update NoC
 		calcNoC(layerSch.noc, layerSch.place, curNode);
 	}
+
 	return layerSch;
 }
 
@@ -154,32 +177,44 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 	bool hasWgt = layer.weight_size() > 0;
 	bool wgt_B = layerT.hasWgtPrevs();
 
+	// Intervals on each dimension.
 	len_t* arrs[4];
 	arrs[0] = part_intv(ofmShape.c, part.K);
 	arrs[1] = part_intv(B, part.B);
 	arrs[2] = part_intv(ofmShape.h, part.H);
 	arrs[3] = part_intv(ofmShape.w, part.W);
-	fmap_range::dim_range kRange, bRange, hRange, wRange;
-	fmap_range emptyRange({0, 0}, {0, 0}, {0, 0}, {0, 0});
+
+	/* ########## Set fmap layouts ########## */
 
 	auto& ofmLayout = static_cast<StdULayout&>(place.getOfmL());
 	auto& ifmLayout = static_cast<StdDataLayout&>(place.getIfmL());
 	auto& wgtLayout = static_cast<StdDataLayout&>(place.getWgtL());
+
 	ofmLayout.setDims(part.K, part.B, part.H, part.W);
-	if(fmap_K)
+
+	if(fmap_K){
 		ifmLayout.setBcast(1, 1);
-	else
+	}else{
 		ifmLayout.setBcast(part.K, part.B * part.H * part.W);
+	}
 
 	if(hasWgt){
-		if(wgt_B)
+		if(wgt_B){
 			wgtLayout.setBcast(part.H * part.W, 1);
-		else
+		}else{
 			wgtLayout.setBcast(part.B * part.H * part.W, 1);
+		}
 	}
+
+	/* ########## Set rangeArr ########## */
+
+	fmap_range::dim_range kRange, bRange, hRange, wRange;
+	fmap_range emptyRange({0, 0}, {0, 0}, {0, 0}, {0, 0});
+
 	auto* ofmArr = ofmLayout.rangeArr.get();
 	auto* ifmArr = ifmLayout.rangeArr.get();
 	auto* wgtArr = wgtLayout.rangeArr.get();
+
 	for(plen_t k = 0; k < part.K; ++k){
 		kRange = {arrs[0][k], arrs[0][k+1]};
 		for(plen_t b = 0; b < part.B; ++b){
@@ -188,9 +223,13 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 				hRange = {arrs[2][h], arrs[2][h+1]};
 				for(plen_t w = 0; w < part.W; ++w){
 					wRange = {arrs[3][w], arrs[3][w+1]};
+
+					// Update ofmap rangeArr
 					*ofmArr = {kRange, bRange, hRange, wRange};
 					vol_t s = (*ofmArr).size();
 					ofmLayout.update(*ofmArr);
+
+					// Update ifmap rangeArr
 					if(fmap_K || k == 0){
 						if(s == 0){
 							*ifmArr = emptyRange;
@@ -202,6 +241,8 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 						}
 						++ifmArr;
 					}
+
+					// Update weight rangeArr
 					if(hasWgt && (wgt_B || b == 0) && h == 0 && w == 0){
 						if(s == 0){
 							*wgtArr = emptyRange;
@@ -213,11 +254,13 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 						}
 						++wgtArr;
 					}
+
 					++ofmArr;
 				}
 			}
 		}
 	}
+
 	assert(ifmArr == ifmLayout.rangeArr.get() + ifmLayout.rangeLength());
 	assert(wgtArr == wgtLayout.rangeArr.get() + wgtLayout.rangeLength());
 	assert(ofmArr == ofmLayout.rangeArr.get() + ofmLayout.rangeLength());
@@ -236,9 +279,11 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 
 void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) const{
 	noc.clear();
+
 	const Node& layerT = curNode->layert;
 	len_t B = curNode->num_batch;
 	bool wgt_B = layerT.hasWgtPrevs();
+
 	len_t curC;
 
 	// Fetch weight first.
@@ -262,6 +307,7 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 		assert(curC == layerT.layer().weight_shape().c);
 	}else{
 		noc.fromRemoteMem(place.getWgtL());
+		// Weight only need to fetch once. Thus divided by #bgrp.
 		noc.div(LNode::tot_batch / B);
 	}
 
@@ -279,7 +325,7 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 			curC = 0;
 			++cur_N;
 		}else{
-			// TODO: here we have asserted input_C < elt_K for eltwise layer, so its fine.
+			// Here we have asserted input_C < elt_K for eltwise layer, so its fine.
 			assert(curC <= elt_K);
 		}
 	}
@@ -303,7 +349,7 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 				curC = 0;
 				++cur_N;
 			}else{
-				// TODO: here we have asserted input_C < elt_K for eltwise layer, so its fine.
+				// Here we have asserted input_C < elt_K for eltwise layer, so its fine.
 				assert(curC <= elt_K);
 			}
 		}
@@ -315,6 +361,15 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 	if(curNode->to_dram){
 		noc.toRemoteMem(place.getOfmL());
 	}
+
+	/*
+	if(curNode->to_dram){
+		// TODO: change interleaving into 1-2 remote mems.
+		fmap_range ofmRange(ofmShape, totBatch);
+		placeSch.memLayout = std::make_unique<MemULayout>(ofmRange, NoC::dram_list.data(), NoC::dram_list.size());
+		layerSch.place.memLayout = std::make_unique<MemULayout>(ofmRange, NoC::dram_list.data(), NoC::dram_list.size());
+	}
+	*/
 }
 
 bool LayerScheme::isValid() const{

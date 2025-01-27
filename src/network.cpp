@@ -6,10 +6,11 @@
 #include "coremapping.h"
 
 
-const Network* network=nullptr;
+const Network* network = nullptr;
 
 InputData::InputData(const std::string& _name, const fmap_shape& _data_shape)
-	:name(_name), data_shape(_data_shape){
+	:name(_name), data_shape(_data_shape)
+{
 	assert(data_shape.size > 0);
 }
 
@@ -18,7 +19,8 @@ const fmap_shape& InputData::get_shape() const{
 }
 
 Node::Node(const Layer* _l, const Bitset& _ifmPrevs, len_t _external_C, bwidth_t width, const Bitset& _wgtPrevs)
-	:l(_l), ifmPrevs(_ifmPrevs), wgtPrevs(_wgtPrevs), prevs(_ifmPrevs | _wgtPrevs), external_C(_external_C){
+	:l(_l), ifmPrevs(_ifmPrevs), wgtPrevs(_wgtPrevs), prevs(_ifmPrevs | _wgtPrevs), external_C(_external_C)
+{
 	if(width > 0) const_cast<Layer*>(_l)->set_bitwidth(width);
 }
 
@@ -42,10 +44,6 @@ const Bitset& Node::getPrevs() const{
 	return prevs;
 }
 
-bool Node::hasWgtPrevs() const{
-	return wgtPrevs.count() > 0;
-}
-
 const Bitset& Node::get_nexts() const{
 	return nexts;
 }
@@ -57,25 +55,17 @@ utime_t Node::get_utime() const{
 len_t Node::get_external_C() const{
 	return external_C;
 }
-/*
-void Node::ifm_to_prev_ofm(fmap_range& ifm_rng) const{
 
+bool Node::hasWgtPrevs() const{
+	return wgtPrevs.count() > 0;
 }
-*/
+
 void Node::add_next(lid_t l){
 	nexts.set(l);
 }
 
 
-Network::Network(){
-	// acc_ops.push_back(0);
-	/*
-	acc_ops[0] = 0;
-	for(size_t i=0;i<len;++i){
-		acc_ops[i+1] = acc_ops[i] + layers[i].total_op();
-	}
-	*/
-}
+Network::Network(){}
 
 void Network::err_mismatch(const std::string& lname, const fmap_shape& shape1, const fmap_shape& shape2, bool total){
 	std::cerr << "The h*w of inputs of Layer " << lname << " mismatch!" << std::endl;
@@ -96,7 +86,7 @@ void Network::err_eltwise(const std::string& lname, const len_t from_C, const le
 lid_t Network::add(const Layer* l, const layer_set& ifmPrevs, bwidth_t width, std::vector<InputData> ext_data, const layer_set& wgtPrevs){
 	// If no prevs indicated, use default_bs.
 	bool default_prev = (ext_data.empty() && ifmPrevs.empty());
-	lid_t last_id=0;
+	lid_t last_id = 0;
 	Bitset prev_layers, prevWgts;
 	if(default_prev){
 		assert(!layers.empty());
@@ -111,7 +101,6 @@ lid_t Network::add(const Layer* l, const layer_set& ifmPrevs, bwidth_t width, st
 	fmap_shape padded_ifm;
 	padded_ifm.c = 0;
 
-	// TODO: remove constraint for eltwise layer.
 	len_t eltwise_C = 0;
 	if(IS_INSTANCE(l, EltwiseLayer)){
 		eltwise_C = static_cast<const EltwiseLayer*>(l)->ofmap_shape().c;
@@ -130,27 +119,33 @@ lid_t Network::add(const Layer* l, const layer_set& ifmPrevs, bwidth_t width, st
 		}
 	};
 
+	// Check ext data fmap shapes
 	for(const InputData& input : ext_data){
 		const fmap_shape& in_shape = input.get_shape();
 		check_func(in_shape);
 	}
-
 	// The number of external ifmap channels
 	len_t external_C = padded_ifm.c;
+
+	// Constraint for eltwise layer
 	if(eltwise_C > 0 && external_C > eltwise_C){
 		err_eltwise(l->get_name(), 0, external_C, eltwise_C);
 	}
+
+	// Check prev layer fmap shapes
 	FOR_BITSET(it, prev_layers){
 		lid_t layer_id = it;
-		const fmap_shape& in_shape=getNode(layer_id).layer().ofmap_shape();
+		const fmap_shape& in_shape = getNode(layer_id).layer().ofmap_shape();
 		check_func(in_shape);
 	}
 
+	// Check whether padding is valid
 	padded_ifm.update_size();
 	if(!const_cast<Layer*>(l)->set_padded_ifm(padded_ifm)){
 		err_mismatch(l->get_name(), padded_ifm, l->tot_ifmap_shape(), true);
 	}
 
+	// Checks for weight prevs
 	if(prevWgts.count() > 0){
 		assert(l->weight_size() > 0);
 		fmap_shape wgtShape = l->weight_shape();
@@ -181,6 +176,8 @@ lid_t Network::add(const Layer* l, const layer_set& ifmPrevs, bwidth_t width, st
 	}
 
 	lid_t cur_id = static_cast<lid_t>(layers.size());
+
+	// Add next info of previous layers
 	FOR_BITSET(it, prev_layers){
 		lid_t layer_id = it;
 		layers[layer_id].add_next(cur_id);
@@ -189,6 +186,8 @@ lid_t Network::add(const Layer* l, const layer_set& ifmPrevs, bwidth_t width, st
 		lid_t layer_id = it;
 		layers[layer_id].add_next(cur_id);
 	}
+
+	// Add layer to network
 	layers.emplace_back(l, prev_layers, external_C, width, prevWgts);
 
 	return cur_id;
@@ -200,6 +199,17 @@ const Node& Network::getNode(lid_t id) const{
 
 const Node& Network::operator[](lid_t id) const{
 	return layers[id];
+}
+
+lid_t Network::len() const{
+	return static_cast<lid_t>(layers.size());
+}
+
+bool Network::is_chain() const{
+	for(size_t i=1;i<layers.size();++i){
+		if(!layers[i].getPrevs().contains(i-1)) return false;
+	}
+	return true;
 }
 
 bool Network::has_dep(const Bitset& src, const Bitset& dst) const{
@@ -236,15 +246,4 @@ void Network::set_utime(const CoreMapper& mapper) const{
 		Layer& l = const_cast<Layer&>(n.layer());
 		mapper.set_utime(l);
 	}
-}
-
-lid_t Network::len() const{
-	return static_cast<lid_t>(layers.size());
-}
-
-bool Network::is_chain() const{
-	for(size_t i=1;i<layers.size();++i){
-		if(!layers[i].getPrevs().contains(i-1)) return false;
-	}
-	return true;
 }

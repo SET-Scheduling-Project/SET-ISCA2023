@@ -1,3 +1,15 @@
+/* This file contains
+ *	SchNode: [base class] Node of a "full" RA Tree scheme. (Contains both
+ *      structural information and scheduling scheme & costs)
+ *  LNode:   [derived from SchNode] Node of type L
+ *  Cut:     [derived from SchNode] Node of type S/T
+ *  TCut:    [derived from Cut] Node of type T
+ *  SCut:    [derived from Cut] Node of type S
+ *
+ *  All inter-layer cost calculations are in schnode.cpp
+ */
+
+
 #ifndef SCHNODE_H
 #define SCHNODE_H
 
@@ -42,6 +54,7 @@ public:
 	typedef std::unordered_map<lid_t, LNode*> nodeList_t;
 	typedef LTreeNode::NodeType NodeType;
 
+	// Cost, including energy and latency(time)
 	struct SchCost{
 		energy_t energy;
 		cycle_t time;
@@ -64,15 +77,19 @@ public:
 	static len_t tot_batch;
 
 protected:
-	bool valid;
-	const NodeType type;
-	const len_t num_batch;
-	const Cluster cluster;
-	const Cut* const parent;
-	SchCost cost;
-	NoC noc;
+	bool valid;              // whether scheme is valid
+	const NodeType type;     // type of node
+	const len_t num_batch;   // batch num (b_i in SET paper)
+	const Cluster cluster;   // core cluster (TG_i in SET paper)
+	const Cut* const parent; // parent of current node
+	SchCost cost;            // total cost of current node
+	NoC noc;                 // noc information
+
+	// Occupied buffer size, see doc for more documentation.
 	BufferUsage buf_usage, ifm_usage, wgt_usage;
+	// Total energy of ubuf/buffer/bus/mac (in intra-core)
 	energy_t ubuf_energy, buf_energy, bus_energy, mac_energy;
+
 	// lnodeList points to a list of all SchNodes on the tree.
 	// All SchNodes on the tree shares one lnodeList, managed by the root.
 	nodeList_t* const lnodeList;
@@ -87,10 +104,11 @@ public:
 
 	SchNode(NodeType t, const Cluster& _c, cut_ptr _parent, len_t nbatch);
 	virtual ~SchNode() =0;
+
 	// Used to set a new parent for this. See the implementation of copy().
 	void setParent(Cut* newParent);
 
-	// The main search function.
+	// Incremental search (reuse old results if possible)
 	virtual void searchInc(LTreeNode* node) =0;
 
 	// Copy and return a new SchNode from this.
@@ -99,9 +117,11 @@ public:
 	virtual bool contains(lid_t layerid) const =0;
 
 	bool is_valid() const;
+	// A "root T cut" is a DRAM cut.
 	bool is_DRAM_cut() const;
 
-	// Getter functions.
+	// Getter functions
+
 	NodeType get_type() const;
 	const Cluster& get_cluster() const;
 	SchCost get_cost() const;
@@ -121,6 +141,7 @@ public:
 	friend std::ostream& operator<<(std::ostream& os, const SchNode& sch);
 	friend std::ostream& operator<<(std::ostream& os, const SchNode* sch);
 
+#ifndef NOT_GEN_IR
 // **************** Code for IR generation ****************
 protected:
 	typedef std::uint32_t jsonindex_t;
@@ -145,29 +166,36 @@ public:
 	Json::Value IR_gen() const;
 	virtual void add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<Json::Value>& workload_list) const = 0;
 	virtual const LNode* get_lnode_by_id(lid_t id) const = 0;
+#endif
 };
 
 class LNode : public SchNode{
 	friend class StdLayerEngine;
-private:
-	lid_t layerid;
-	const Node& layert;
-	PlaceSch place_sch;
-	const Bitset dirp_set;
-	const bool to_dram;
-	CoreMapper::CoreMapping tileSch;
 
+private:
+	lid_t layerid;                   // Index of represented layer
+	const Node& layert;              // Reference to represented layer
+	PlaceSch place_sch;              // Placement (and partition) scheme
+	const Bitset dirp_set;           // Direct prev layers (for shortcut)
+	const bool to_dram;              // whether writes results to DRAM
+	CoreMapper::CoreMapping tileSch; // scheduling scheme of this layer (tiling, etc.)
+
+	// Search for intra-layer scheme
 	bool search();
 
 public:
 	LNode(LTreeNode* _node, const Cluster& _c, cut_ptr _parent);
 	virtual ~LNode() override;
 
+	// Search for intra-layer scheme, then update buffer usage and cost.
 	void searchLayer();
+
 	virtual void searchInc(LTreeNode* node) override;
 
 	virtual SchNode* copy(Cut* newParent = nullptr) const override;
 	virtual bool contains(lid_t _layerid) const override;
+
+	// Getter functions
 
 	const Node& getLayer() const;
 	const PlaceSch& get_place_sch() const;
@@ -177,32 +205,37 @@ public:
 	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const override;
 	virtual void print_tree(std::string pad = "", std::ostream& os = std::cout) const override;
 
+#ifndef NOT_GEN_IR
 	// **************** Code for IR generation ****************
 	static const Cut* get_lca(const LNode* node1, const LNode* node2);
 	virtual void add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<Json::Value>& workload_list) const override;
 	virtual const LNode* get_lnode_by_id(lid_t id) const override;
+#endif
 };
 
 class Cut : public SchNode{
 private:
+	// Used for incremental search
 	sn_vec oldChildren;
 	LTreeNode* curNode;
 
 protected:
-	const Bitset layers;
-	sn_vec children;
-	len_t num_bgrp;
+	const Bitset layers; // All layers in this node (L_i in SET paper)
+	sn_vec children;     // Childrens of this node (C_i in SET paper)
+	len_t num_bgrp;      // Number of batch groups (sb_i in SET paper)
 
+	// Iteratively construct all childs while updating *this
 	virtual void construct(LTreeNode* node) =0;
 
 public:
-
 	Cut(NodeType t, LTreeNode* node, const Cluster& _c, cut_ptr _parent);
 	virtual ~Cut() override;
+
 	// Constructs a new child corresponding to "_node".
 	// See definition for more details.
 	sn_ptr newNode(LTreeNode *_node, const Cluster& _c);
 
+	// Adds new child to end of *children*.
 	void add(SchNode* child);
 
 	virtual void searchInc(LTreeNode* node) override;
@@ -210,15 +243,19 @@ public:
 	virtual SchNode* copy(Cut* newParent = nullptr) const override =0;
 	virtual bool contains(lid_t layerid) const override;
 
+	// Getter functions
+
 	const sn_vec& getChildren() const;
 	len_t get_num_bgrp() const;
 
 	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const override;
 	virtual void print_tree(std::string pad = "", std::ostream& os = std::cout) const override;
 
+#ifndef NOT_GEN_IR
 	// **************** Code for IR generation ****************
 	virtual const LNode* get_lnode_by_id(lid_t id) const override;
 	friend const Cut* LNode::get_lca(const LNode* node1, const LNode* node2);
+#endif
 };
 
 class TCut : public Cut{
@@ -231,14 +268,16 @@ public:
 
 	virtual SchNode* copy(Cut* newParent = nullptr) const override;
 
+#ifndef NOT_GEN_IR
 	// **************** Code for IR generation ****************
 	virtual void add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<Json::Value>& workload_list) const override;
+#endif
 };
 
 class SCut : public Cut{
 private:
-	const std::vector<lid_t> stage;
-	const lid_t num_stage;
+	const std::vector<lid_t> stage; // Pipeline stage of each child
+	const lid_t num_stage;          // Number of pipeline stages
 
 	virtual void construct(LTreeNode* node) override;
 
@@ -248,8 +287,10 @@ public:
 
 	virtual SchNode* copy(Cut* newParent = nullptr) const override;
 
+#ifndef NOT_GEN_IR
 	// **************** Code for IR generation ****************
 	virtual void add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<Json::Value>& workload_list) const override;
+#endif
 };
 
 #endif // SCHNODE_H

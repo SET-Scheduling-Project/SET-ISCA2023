@@ -49,6 +49,9 @@ len_t* part_intv(len_t tot_len, len_t ncuts){
 	return arr;
 }
 
+
+/* ########## pos_t ########## */
+
 bool pos_t::operator<(const pos_t& other) const{
 	return (x<other.x) || ((x==other.x) && (y<other.y));
 }
@@ -77,6 +80,9 @@ std::ostream& operator<<(std::ostream& os, const pos_t& pos){
 	return os << '(' << static_cast<int>(pos.x) << ',' << static_cast<int>(pos.y) << ')';
 }
 
+
+/* ########## fmap_shape ########## */
+
 fmap_shape::fmap_shape(len_t _c, len_t _h, len_t _w)
 	:c(_c), h(_h), w(_w == 0?_h:_w){
 	update_size();
@@ -101,6 +107,9 @@ std::ostream& operator<<(std::ostream& os, const fmap_shape& shape){
 	return os << "(C=" << shape.c << ", H=" << shape.h << ", W=" << shape.w << ')';
 }
 
+
+/* ########## fmap_range::dim_range ########## */
+
 bool fmap_range::dim_range::operator<(const dim_range& other) const{
 	if(from != other.from) return from < other.from;
 	return to < other.to;
@@ -112,10 +121,6 @@ bool fmap_range::dim_range::operator==(const dim_range& other) const{
 
 bool fmap_range::dim_range::operator!=(const dim_range& other) const{
 	return from != other.from || to != other.to;
-}
-
-std::ostream& operator<<(std::ostream& os, const fmap_range::dim_range& range){
-	return os << '(' << range.from << ',' << range.to << ')';
 }
 
 fmap_range::dim_range& fmap_range::dim_range::operator+=(const len_t& offset){
@@ -144,8 +149,37 @@ fmap_range::dim_range fmap_range::dim_range::intersect(const dim_range& other) c
 	return dim_range{newFrom, MAX(newTo, newFrom)};
 }
 
+std::ostream& operator<<(std::ostream& os, const fmap_range::dim_range& range){
+	return os << '(' << range.from << ',' << range.to << ')';
+}
+
+
+/* ########## fmap_range ########## */
+
+fmap_range::fmap_range(const dim_range& _c, const dim_range& _b, const dim_range& _h, const dim_range& _w)
+	:c(_c), b(_b), h(_h), w(_w){}
+
 fmap_range::fmap_range(const fmap_shape& shape, len_t B)
 	:c{0, shape.c}, b{0, B}, h{0, shape.h}, w{0, shape.w} {}
+
+bool fmap_range::operator<(const fmap_range& other) const{
+	if(c != other.c) return c < other.c;
+	if(b != other.b) return b < other.b;
+	if(h != other.h) return h < other.h;
+	return w < other.w;
+}
+
+bool fmap_range::operator==(const fmap_range& other) const{
+	return c == other.c && b == other.b && h == other.h && w == other.w;
+}
+
+vol_t fmap_range::size() const{
+	return c.size() * b.size() * h.size() * w.size();
+}
+
+bool fmap_range::is_empty() const{
+	return c.is_empty() || b.is_empty() || h.is_empty() || w.is_empty();
+}
 
 const fmap_range::dim_range& fmap_range::get_range(uint8_t idx) const{
 	switch(idx){
@@ -163,24 +197,6 @@ const fmap_range::dim_range& fmap_range::get_range(uint8_t idx) const{
 	return c;
 }
 
-fmap_range::fmap_range(const dim_range& _c, const dim_range& _b, const dim_range& _h, const dim_range& _w)
-	:c(_c), b(_b), h(_h), w(_w){}
-
-vol_t fmap_range::size() const{
-	return c.size() * b.size() * h.size() * w.size();
-}
-
-bool fmap_range::operator<(const fmap_range& other) const{
-	if(c != other.c) return c < other.c;
-	if(b != other.b) return b < other.b;
-	if(h != other.h) return h < other.h;
-	return w < other.w;
-}
-
-bool fmap_range::operator==(const fmap_range& other) const{
-	return c == other.c && b == other.b && h == other.h && w == other.w;
-}
-
 fmap_range fmap_range::intersect(const fmap_range& other) const{
 	return fmap_range{
 		c.intersect(other.c),
@@ -190,18 +206,6 @@ fmap_range fmap_range::intersect(const fmap_range& other) const{
 	};
 }
 
-bool fmap_range::is_empty() const{
-	return c.is_empty() || b.is_empty() || h.is_empty() || w.is_empty();
-}
-
 std::ostream& operator<<(std::ostream& os, const fmap_range& range){
 	return os << "(B=" << range.b << ", C=" << range.c << ", H=" << range.h << ", W=" << range.w << ')';
 }
-
-
-
-/*
-int divceil(int m, int n) {
-	return (m - 1) / n + 1;
-}
-*/

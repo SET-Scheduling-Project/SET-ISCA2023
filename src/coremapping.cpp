@@ -14,6 +14,7 @@
 #define PolarInst PolarMapper::Instance
 #define EyerissInst EyerissMapper::Instance
 
+
 const char PolarInst::Part::partName[]={
 	'C','K','H','W','N',
 };
@@ -64,11 +65,6 @@ PolarMapper::PolarMapper(const PolarCore& _core)
 	}
 }
 
-CoreMapper::CoreMapping PolarMapper::genMapping(const ConvWl& wl){
-	PolarInst instance(core);
-	return instance.genMapping(wl);
-}
-
 void PolarMapper::set_conv_utime(ConvLayer& l) const{
 	utime_t t;
 	if(REF_IS_INSTANCE(l, GroupConvLayer)){
@@ -91,6 +87,11 @@ void PolarMapper::set_conv_utime(ConvLayer& l) const{
 	}
 	t /= core.mac_num;
 	l.set_utime(t);
+}
+
+CoreMapper::CoreMapping PolarMapper::genMapping(const ConvWl& wl){
+	PolarInst instance(core);
+	return instance.genMapping(wl);
 }
 
 vol_t PolarMapper::get_ubuf_size() const{
@@ -163,6 +164,58 @@ CoreMapper::CoreMapping CoreMapper::genLayerMap(const Layer& layer, const PartSc
 }
 
 // Codes for PolarInst in main search
+
+/*
+ * Polar Dataflow
+ *
+ * Example for loop:
+ *
+ * // L3 level (swap these two loops if no L2)
+ * for K3
+ *   for BH3W3
+ *     // L2 level
+ *     for K2
+ *       // BSD level
+ *       for WBSD in 4
+ *         for KBSD in 4
+ *           // PE level
+ *           for K1
+ *             for C
+ *               for RS
+ *                 for H1W1
+ *
+ * WL2
+ * No WBSD and K2>1 -> No KBSD
+ * K2=1 -> No WBSD
+ * BH3W3=1 or K2=1 -> No L2
+ *
+ * // L3 level (swap these two loops if no L2)
+ * for BH3W3
+ *   for K3
+ *     // L2 level
+ *     for W2
+ *       // BSD level
+ *       for KBSD in 4
+ *         for WBSD in 4
+ *           // PE level
+ *           for K1
+ *             for C
+ *               for RS
+ *                 for H1W1
+ * AL2
+ */
+
+/*
+ * Ifmap BSD pattern examples:
+ * T1: 1234
+ * T2: 2341
+ * T3: 3412
+ * T4: 4123
+ *
+ * T1: 1232
+ * T2: 2313
+ * T3: 3121
+ */
 
 PolarInst::Instance(const PolarCore& _core):core(_core){
 	// Initialize
@@ -462,12 +515,12 @@ CoreMapper::CoreMapping PolarInst::genMapping(const CoreMapper::ConvWl& wl){
 			// DataFlow::HWNK (Similar to KHWN)
 			curDF = DataFlow::HWBK;
 
-			//_try_print(wl, i);
+			// _try_print(wl, i);
 
-			//printf("%s %d*%d %.2e\n",p.getName().c_str(),H1.cnt,W1.cnt,cost.energy);
+			// std::cout << p.getName() << ' ' << H1.cnt << ' ' << W1.cnt << std::endl;
 		}
 	}
-//	std::cout << "time= " << allcst.time << "energy=" << allcst.energy << "\n";
+	// std::cout << "time= " << allcst.time << "energy=" << allcst.energy << "\n";
 	return best_map;
 }
 
@@ -612,24 +665,27 @@ void PolarInst::getCost(const ConvWl& wl){
 	if(hasWBSD) noc_energy += aBSDTot * core.bus.hopCost;
 	mac_energy = wl.tot_op * core.pes.MACCost;
 	energy_t tot_energy = ubuf_energy + buf_energy + noc_energy + mac_energy;
-/*
-	printf("%.3f\t",((double)al1Read * core.al1.RCost)/tot_energy);
-	printf("%.3f\t",((double)al1Write * core.al1.WCost)/tot_energy);
-	printf("%.3f\t",((double)wl1Read * core.wl1.RCost)/tot_energy);
-	printf("%.3f\t",((double)wl1Write * core.wl1.WCost)/tot_energy);
-	printf("%.3f\t",((double)ol1Read * core.ol1.RCost)/tot_energy);
-	printf("%.3f\t",((double)ol1Write * core.ol1.WCost)/tot_energy);
-	printf("%.3f\t",((double)ol2Read * core.ol2.RCost)/tot_energy);
-	printf("%.3f\t",((double)ol2Write * core.ol2.WCost)/tot_energy);
-	printf("%.3f\t",((double)ul3Read * core.ul3.RCost)/tot_energy);
-	printf("%.3f\t",((double)ul3Write * core.ul3.WCost)/tot_energy);
+
+	/*
+	std::cout << (al1Read * core.al1.RCost)/tot_energy << '\t';
+	std::cout << (al1Write * core.al1.WCost)/tot_energy << '\t';
+	std::cout << (wl1Read * core.wl1.RCost)/tot_energy << '\t';
+	std::cout << (wl1Write * core.wl1.WCost)/tot_energy << '\t';
+	std::cout << (ol1Read * core.ol1.RCost)/tot_energy << '\t';
+	std::cout << (ol1Write * core.ol1.WCost)/tot_energy << '\t';
+	std::cout << (ol2Read * core.ol2.RCost)/tot_energy << '\t';
+	std::cout << (ol2Write * core.ol2.WCost)/tot_energy << '\t';
+	std::cout << (ul3Read * core.ul3.RCost)/tot_energy << '\t';
+	std::cout << (ul3Write * core.ul3.WCost)/tot_energy << '\t';
 	if(hasWL2){
-		printf("%.3f\t",((double)wl2Read * core.wl2.RCost)/tot_energy);
-		printf("%.3f\n",((double)wl2Write * core.wl2.WCost)/tot_energy);
+		std::cout << (wl2Read * core.wl2.RCost)/tot_energy << '\t';
+		std::cout << (wl2Write * core.wl2.WCost)/tot_energy;
 	}else{
-		printf("0\t0\n");
+		std::cout << 0 << '\t' << 0;
 	}
-*/
+	std::cout << std::endl;
+	*/
+
 	if(hasKBSD){
 		cycle_t cyc = (curDF == DataFlow::HWBK && hasWBSD)?WL.BSD.cnt*tile_time:tile_time;
 		if(cyc*core.bus.busBW < wl1TileSize * nDup){
@@ -672,14 +728,7 @@ void PolarInst::getCost(const ConvWl& wl){
 	double util = tot_op / (comp_time * TGroup * core.mac_num);
 	assert(util <= 1 + 1e-6);
 	double tot_util = tot_op / (tot_time * core.mac_num);
-	/*printf("%llu\n",al2_rtime);
-	printf("%llu\n",al2_wtime);
-	printf("%llu\n",ol2_rtime);
-	printf("%llu\n",ol2_wtime);
-	printf("%llu\n",wl2_rtime);
-	printf("%llu\n",wl2_wtime);
-	printf("%llu\n",ul3_rtime);
-	printf("%llu\n",ul3_wtime);*/
+
 	MapCost cost(tot_energy, tot_time);
 	if(cost.cost() < best_map.cost.cost()){
 		best_map = {cost, ubuf_energy, buf_energy, noc_energy, mac_energy, util, tot_util};
@@ -689,27 +738,59 @@ void PolarInst::getCost(const ConvWl& wl){
 
 // Codes for EyerissInst in main search
 
-EyerissInst::Instance(const EyerissCore& _core):core(_core){}
-
 /*
- * reply_h = 32
- * maxc = 3
- * maxk = 4
- * 3 * 4 * 2
- * 2 * 4 * 4
- * 1 * 4 * 8
+ * Eyeriss Dataflow
  *
- * (3 * 4 * 2)
- * 3 * 3 * 3
- * 3 * 2 * 5
- * 3 * 1 * 10
+ * For Loop:
  *
- * 32
- * 3
- * 11
- * 2 * 11 * 1
- * 3 * 10 * 1
-*/
+ * for K2
+ *  for C2
+ *   for Nt
+ *    for W
+ *     for K1
+ *      for C1
+ *       for S
+ *
+ * L1 size req.:
+ * IFM: C1*S
+ * FIL: C1*K1*S
+ * OFM: 1 (of psum width)
+ *
+ * Fold: W
+ * Replicate: CKN(H),K(W)
+ * Physical Arr: R*PW
+ *     PW = DIVCEIL(H, foldW)
+ *
+ * UL2 access:
+ * FIL-W/IFM-W: #FIL/#IFM (May be added outside)
+ * FIL-R: #FIL
+ * IFM-R: K2*(Hifm + (R - sH)*(foldW - 1))*Wifm*C*N
+ * OFM-R/W: C2 * #OFM
+ *
+ * ITCN access:
+ * X = FIL/IFM
+ * X-W = X-R @ UL2
+ * X-R = X-W @ XL1
+ * OFM-R/W = (OFM-W + OFM-R) @ UL2 - #OFM
+ * // P.S. Notice that psums never bcast
+ *
+ * L1 access:
+ * FIL-R: op
+ * FIL-W: #FIL * replN * PW
+ *     // Actual size may be slightly smaller when Nt is very small and PH*foldW>H.
+ * IFM-R: op
+ * IFM-W: Wifm*R*C*H*N*DIVCEIL(K,K1)
+ *     // The "DIVCEIL(K,K1)" term may be a little larger. (See getCost)
+ * OFM-R: op - #OFM
+ * OFM-W: op - #OFM
+ *
+ * Time: Nt*Ct*Kt*W*S
+ *
+ * Variables needed for energy:
+ * replN, K1, K2, C2
+ */
+
+EyerissInst::Instance(const EyerissCore& _core):core(_core){}
 
 CoreMapper::CoreMapping EyerissInst::genMapping(const CoreMapper::ConvWl& wl) {
 	best_map = CoreMapping();
@@ -817,56 +898,6 @@ CoreMapper::CoreMapping EyerissInst::genMapping(const CoreMapper::ConvWl& wl) {
 	return best_map;
 }
 
-/*
- * For Loop:
- *
- * for K2
- *  for C2
- *   for Nt
- *    for W
- *     for K1
- *      for C1
- *       for S
- *
- * L1 size req.:
- * IFM: C1*S
- * FIL: C1*K1*S
- * OFM: 1 (of psum width)
- *
- * Fold: W
- * Replicate: CKN(H),K(W)
- * Physical Arr: R*PW
- *     PW = DIVCEIL(H, foldW)
- *
- * UL2 access:
- * FIL-W/IFM-W: #FIL/#IFM (May be added outside)
- * FIL-R: #FIL
- * IFM-R: K2*(Hifm + (R - sH)*(foldW - 1))*Wifm*C*N
- * OFM-R/W: C2 * #OFM
- *
- * ITCN access:
- * X = FIL/IFM
- * X-W = X-R @ UL2
- * X-R = X-W @ XL1
- * OFM-R/W = (OFM-W + OFM-R) @ UL2 - #OFM
- * // P.S. Notice that psums never bcast
- *
- * L1 access:
- * FIL-R: op
- * FIL-W: #FIL * replN * PW
- *     // Actual size may be slightly smaller when Nt is very small and PH*foldW>H.
- * IFM-R: op
- * IFM-W: Wifm*R*C*H*N*DIVCEIL(K,K1)
- *     // The "DIVCEIL(K,K1)" term may be a little larger. (See getCost)
- * OFM-R: op - #OFM
- * OFM-W: op - #OFM
- *
- * Time: Nt*Ct*Kt*W*S
- *
- * Variables needed for energy:
- * replN, K1, K2, C2
- */
-
 void EyerissInst::getCost(const CoreMapper::ConvWl& wl) {
 	access_t al1_r, al1_w, wl1_r, wl1_w, pl1_r, pl1_w, ul2_r, ul2_w; // ul2_w will be calculated out of intra-core cost.
 	access_t ul2_ar, ul2_aw, ul2_wr, ul2_ww, ul2_pr, ul2_pw;
@@ -904,9 +935,6 @@ void EyerissInst::getCost(const CoreMapper::ConvWl& wl) {
 
 	wl1_w = filSize * b_reply * phyarr_w;
 
-	// 300: 3/10/10 -> 30
-	// 306: 4/10/10 -> 36
-	// 325: 4/10/10 -> 40
 	len_t al1_k = K2 * k_reply;
 	if(Kt % K1 == 1) al1_k -= k_reply - (wl.K % k_reply);
 	al1_w = _al1_buf * al1_k;
@@ -936,8 +964,8 @@ void EyerissInst::getCost(const CoreMapper::ConvWl& wl) {
 	tot_time = MAX(tot_time, comp_time);
 
 	double util = wl.tot_op * 1.0 / (comp_time * core.mac_num);
-	//std::cout<<util<<' '<<Kt<<' '<<Ct<<' '<<Nt<<std::endl;
-	//std::cout<<' '<<wl.K<<' '<<wl.C<<' '<<wl.B<<' '<<wl.H<<std::endl;
+	// std::cout << util << ' ' << Kt << ' ' << Ct << ' ' << Bt << std::endl;
+	// std::cout << ' ' << wl.K << ' ' << wl.C << ' ' << wl.B << ' ' << wl.H << std::endl;
 	assert(util <= 1 + 1e-6);
 	double tot_util = wl.tot_op * 1.0 / (tot_time * core.mac_num);
 	MapCost cost(tot_energy, tot_time);
@@ -1015,20 +1043,18 @@ CoreMapper::CoreMapping& CoreMapper::CoreMapping::operator+=(const CoreMapping& 
 // Codes for PolarInst::Part
 
 std::string PolarInst::Part::getName() const{
-	return std::string(1,partName[static_cast<std::uint8_t>(dimA)])+partName[static_cast<std::uint8_t>(dimO)];
+	return std::string(1, partName[static_cast<std::uint8_t>(dimA)]) + partName[static_cast<std::uint8_t>(dimO)];
 }
 
 /*
-void PolarMapper::_try_print(const CoreMapper::Workload& wl, size_t i){
+void PolarInst::_try_print(const CoreMapper::ConvWl& wl, size_t i){
 	static std::ofstream ofs("out.log");
-	ofs<<wl.C<<'\t'<<wl.K<<'\t'<<wl.H<<'\t'<<wl.W<<'\t';
-	ofs<<wl.R<<'\t'<<wl.S<<'\t'<<wl.B<<'\t';
-	ofs<<all_parts[i].getName()<<'\t';
-	ofs<<H1.cnt<<'\t'<<W1.cnt<<'\t';
-	//ofs<<hasWL2<<'\t'<<hasKBSD<<'\t'<<hasWBSD<<'\t';
-	ofs<<allcst.time<<'\t'<<allcst.energy<<'\t';
-	ofs<<hasl2.time<<'\t'<<hasl2.energy<<'\t';
-	ofs<<comp_time<<std::endl;
+	ofs << wl.C << '\t' << wl.K << '\t' << wl.H << '\t' << wl.W << '\t';
+	ofs << wl.R << '\t' << wl.S << '\t' << wl.B << '\t';
+	ofs << all_parts[i].getName() << '\t';
+	ofs << H1.cnt << '\t' << W1.cnt << '\t';
+	ofs << hasWL2 << '\t' << hasKBSD << '\t' << hasWBSD << '\t';
+	ofs << comp_time << std::endl;
 }
 */
 

@@ -62,6 +62,8 @@ public:
 	typedef std::unique_ptr<cidx_t[]> allocRes_t;
 	allocRes_t try_alloc(utime_t* ops, cidx_t childNum, utime_t totOps=0) const;
 	Cluster sub_cluster(cidx_t childIdx, const allocRes_t& allocRes) const;
+
+	// Returns the sub_cluster formed by chip [from, from+num)
 	Cluster sub_cluster(cidx_t from, cidx_t num) const;
 
 	// Global functions for "cidx_t -> pos_t" and "pos_t -> xyid_t" mappings.

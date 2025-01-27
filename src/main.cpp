@@ -8,7 +8,10 @@
 
 #include "sa.h"			// Library for SA
 
+#ifndef NOT_GEN_IR
 #include "json/json.h"	// Json::StyledWriter
+#endif
+
 #include <cassert>		// assert
 #include <cmath>		// std::pow
 #include <cstdlib>		// std::srand
@@ -88,7 +91,6 @@ int main(int argc, char** argv){
 	EyerissMapper mapper2(core2);
 	int mm, nn, xx, yy, ss, bb, rr, ff;
 	bw_t bw;
-	std::string IR_name = "";
 
 	/*
 	//std::ifstream in("params.in");
@@ -104,7 +106,10 @@ int main(int argc, char** argv){
 	std::cin >> mm >> nn >> bb >> xx >> yy >> ss >> rr >> ff >> bw;
 	// mm=0;nn=2;bb=64;xx=8;yy=8;ss=4;rr=100;ff=1;bw=24;
 
+#ifndef NOT_GEN_IR
+	std::string IR_name = "";
 	if(argc > 1) IR_name = argv[1];
+#endif
 
 	std::cout << "Seed: " << seed << std::endl;
 
@@ -305,6 +310,7 @@ int main(int argc, char** argv){
 			cur_sch.sch->print_struct("\t");
 			std::ofstream out(std::string("tree_") + method + "-SA.txt");
 			cur_sch.sch->print_tree("", out);
+#ifndef NOT_GEN_IR
 			if(!IR_name.empty()){
 				auto IR = cur_sch.sch->IR_gen();
 				Json::StyledWriter swriter;
@@ -313,6 +319,7 @@ int main(int argc, char** argv){
 				IRfile << swriter.write(IR);
 				IRfile.close();
 			}
+#endif
 			min_sch.min(cur_sch);
 		}else{
 			std::cout << method << " finds no valid solution." << std::endl;
@@ -356,6 +363,7 @@ int main(int argc, char** argv){
 			SA_sch.sch->print_struct("\t");
 			std::ofstream out(std::string("tree_") + method + ".txt");
 			SA_sch.sch->print_tree("", out);
+#ifndef NOT_GEN_IR
 			if(!IR_name.empty()){
 				auto IR = SA_sch.sch->IR_gen();
 				Json::StyledWriter swriter;
@@ -364,6 +372,7 @@ int main(int argc, char** argv){
 				IRfile << swriter.write(IR);
 				IRfile.close();
 			}
+#endif
 		}else{
 			std::cout << method << " finds no valid solution." << std::endl;
 		}

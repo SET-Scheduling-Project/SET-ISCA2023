@@ -4,8 +4,12 @@
 
 #include "layerengine.h"
 #include "network.h"
+#ifndef NOT_GEN_IR
 #include "json/json.h"
+#endif
 
+
+/* #################### SchNode #################### */
 
 LayerEngine* SchNode::layerMapper=nullptr;
 len_t SchNode::tot_batch=0;
@@ -118,14 +122,22 @@ std::ostream& operator<<(std::ostream& os, const SchNode* sch){
 	return os;
 }
 
+
+/* #################### LNode #################### */
+
 bool LNode::search(){
 	auto res = layerMapper->search(this);
+
+	// If no valid scheme found, return
 	if(!res.isValid()) return false;
+
+	// Otherwise, copy the returned scheme into this LNode
 	noc = std::move(res.noc);
 	ubuf_energy = res.extUbufEnergy;
 	place_sch = std::move(res.place);
 	tileSch = res.tileSch;
 	cost = res.totCost;
+
 	return true;
 }
 
@@ -146,15 +158,20 @@ void LNode::searchLayer(){
 	if(!valid){
 		return;
 	}
+
+	// Update ifmap buffer usage
 	if(!place_sch.getIfmL().update(ifm_usage)){
 		valid = false;
 		return;
 	}
+
+	// Update weight buffer usage
 	if(!place_sch.getWgtL().update(layert.hasWgtPrevs() ? ifm_usage : wgt_usage)){
 		valid = false;
 		return;
 	}
 
+	// Update total buffer usage
 	buf_usage = ifm_usage;
 	if(!buf_usage.all_add(ofm_ubuf_vol)){
 		valid = false;
@@ -164,11 +181,17 @@ void LNode::searchLayer(){
 		valid = false;
 		return;
 	}
+
+	// Add to lnodeList
 	(*lnodeList)[layerid] = this;
+
+	// Update energy
 	ubuf_energy += tileSch.ubuf * cluster.num_cores();
 	buf_energy = tileSch.buffer * cluster.num_cores();
 	bus_energy = tileSch.noc * cluster.num_cores();
 	mac_energy = tileSch.mac * cluster.num_cores();
+
+	// For each segment, also bound NoC & DRAM time
 	bool is_seg = (parent == nullptr) || parent->is_DRAM_cut();
 	if(is_seg){
 		cycle_t noc_time = noc.get_time();
@@ -230,6 +253,9 @@ void LNode::print_tree(std::string pad, std::ostream& os) const{
 	os << std::endl;
 }
 
+
+/* #################### Cut #################### */
+
 Cut::Cut(SchNode::NodeType t, LTreeNode* node, const Cluster& _c, SchNode::cut_ptr _parent)
 	:SchNode(t, _c, _parent, node->get_tot_batch()), curNode(nullptr),
 	  layers(node->layers()), num_bgrp(node->get_bgrp_num()){
@@ -241,13 +267,15 @@ Cut::~Cut(){
 	}
 }
 
-/* Constructs a new child corresponding to "_node".
+/*
+ * Constructs a new child corresponding to "_node".
  * During incremental search, will reuse old SchNode children if possible.
  * (When the LTreeNode is not marked with "new", then it's reusable)
  */
 SchNode::sn_ptr Cut::newNode(LTreeNode* _node, const Cluster& _c){
+	// When not in incremental search, construct new node directly.
 	if(curNode == nullptr) return SchNode::newNode(_node, _c, this);
-
+	// When new node is totally new, construct new node directly.
 	if(_node->isNew()) return SchNode::newNode(_node, _c, this);
 
 	const Bitset& layers = _node->layers();
@@ -292,14 +320,25 @@ void Cut::add(SchNode* child){
 
 void Cut::searchInc(LTreeNode* node){
 	assert(node->layers() == layers);
+
+	// Move old nodes aside
 	curNode = node;
 	oldChildren = std::move(children);
+
+	// Clear relative information
 	children.clear();
 	noc.clear();
 	ifm_usage = BufferUsage();
 	wgt_usage = BufferUsage();
 	buf_usage = BufferUsage();
+
+	/*
+	 * Re-construct, now newNode() in construct() will
+	 * use incremental search (when curNode != nullptr)
+	 */
 	construct(node);
+
+	// Clear old nodes
 	while(!oldChildren.empty()){
 		delete oldChildren.front();
 		oldChildren.pop_front();
@@ -343,6 +382,9 @@ void Cut::print_tree(std::string pad, std::ostream& os) const{
 	}
 }
 
+
+/* #################### TCut #################### */
+
 void TCut::construct(LTreeNode* node){
 	bool is_top = (parent == nullptr);
 	bool is_seg = (!is_top) && parent->is_DRAM_cut();
@@ -359,6 +401,7 @@ void TCut::construct(LTreeNode* node){
 			valid = false;
 			return;
 		}
+
 		if(!is_top){
 			/*if(!p->get_ifm_usage()){
 				valid = false;
@@ -432,7 +475,8 @@ void TCut::construct(LTreeNode* node){
 	buf_energy *= num_bgrp;
 	bus_energy *= num_bgrp;
 	mac_energy *= num_bgrp;
-	// Needs to bound total time with DRAM access.
+
+	// For each segment, also bound NoC & DRAM time
 	if(is_seg){
 		cycle_t noc_time = noc.get_time();
 		cost.time = MAX(cost.time, noc_time);
@@ -453,6 +497,9 @@ SchNode* TCut::copy(Cut* newParent) const{
 	}
 	return cut;
 }
+
+
+/* #################### SCut #################### */
 
 void SCut::construct(LTreeNode* node){
 	bool is_seg = (parent == nullptr) || parent->is_DRAM_cut();
@@ -532,7 +579,8 @@ void SCut::construct(LTreeNode* node){
 	buf_energy *= num_bgrp;
 	bus_energy *= num_bgrp;
 	mac_energy *= num_bgrp;
-	// Needs to bound total time with DRAM access.
+
+	// For each segment, also bound NoC & DRAM time
 	if(is_seg){
 		cycle_t noc_time = noc.get_time();
 		cost.time = MAX(cost.time, noc_time);
@@ -554,6 +602,9 @@ SchNode* SCut::copy(Cut* newParent) const{
 	}
 	return cut;
 }
+
+
+/* #################### SchNode::SchCost #################### */
 
 SchNode::SchCost::SchCost(energy_t _energy, cycle_t _time)
 	:energy(_energy),time(_time){}
@@ -594,6 +645,8 @@ std::ostream& operator<<(std::ostream& os, const SchNode::SchCost& cost){
 	return os << "E:" << cost.energy << ", T:" << cost.time << ", Cost:" << cost.cost();
 }
 
+
+#ifndef NOT_GEN_IR
 
 // **************** Code for IR generation ****************
 
@@ -1451,3 +1504,5 @@ void SCut::add_workload_and_dfs(len_t batch_offset, len_t segment, std::vector<J
 		}
 	}
 }
+
+#endif // ifndef NOT_GEN_IR

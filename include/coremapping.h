@@ -1,3 +1,11 @@
+/* This file contains
+ *	CoreMapper:    base class for core mappings (loop-tiling, cost eval, BSD, ...)
+ *  EyerissMapper: the core with Eyeriss architecture.
+ *  PolarMapper:   the core in our test chip.
+ *
+ *  One can add their own core mappings as classes here (e.g. for their own cores).
+ */
+
 #ifndef COREMAPPING_H
 #define COREMAPPING_H
 
@@ -11,90 +19,56 @@ class PartSch;
 //#include "partition.h"
 
 
-/* Example of for loop:
- *
- * // L3 level (swap these two loops if no L2)
- * for K3
- *   for BH3W3
- *     // L2 level
- *     for K2
- *       // BSD level
- *       for WBSD in 4
- *         for KBSD in 4
- *           // PE level
- *           for K1
- *             for C
- *               for RS
- *                 for H1W1
- *
- * WL2
- * No WBSD and K2>1 -> No KBSD
- * K2=1 -> No WBSD
- * BH3W3=1 or K2=1 -> No L2
- *
- * // L3 level (swap these two loops if no L2)
- * for BH3W3
- *   for K3
- *     // L2 level
- *     for W2
- *       // BSD level
- *       for KBSD in 4
- *         for WBSD in 4
- *           // PE level
- *           for K1
- *             for C
- *               for RS
- *                 for H1W1
- * AL2
- */
-
-/* Ifmap BSD:
- * 1234
- * 2341
- * 3412
- * 4123
- * 5666/5676
- * 6555/6757
- * ----/7565
- *
- */
-
 class CoreMapper{
 public:
 	typedef ConvLayer::Workload ConvParent;
 	struct ConvWl: public ConvParent{
 		len_t B, nGroup;
+
 		ConvWl(const ConvParent& parent, len_t _B);
+
 		void init();
 		vol_t ifm_size() const;
 		vol_t ofm_size() const;
 		void calc_op();
 	};
+
 	struct MapCost{
 		energy_t energy;
 		cycle_t time;
+
 		MapCost(energy_t _energy=energy_inf, cycle_t _time=0);
+
 		bool is_valid() const;
 		cost_t cost(len_t nbatch=1) const;
 	};
+
 	struct CoreMapping{
 		MapCost cost;
 		energy_t ubuf, buffer, noc, mac;
 		double util;
 		double tot_util;
+
 		CoreMapping& operator*=(len_t factor);
 		CoreMapping& operator+=(const CoreMapping& other);
 	};
+
 	// Base core
 	const Core& base_core;
+
 	CoreMapper(const Core& c);
+
 	CoreMapping genLayerMap(const Layer& layer, const PartSch& part, len_t batch_size, bool wgtB);
-	virtual CoreMapping genMapping(const ConvWl& wl) = 0;
+
 	const Core& core() const;
 	void set_utime(Layer& l) const;
+
 	virtual void set_conv_utime(ConvLayer& l) const;
 	virtual void set_lr_utime(LRLayer& l) const;
+
+	virtual CoreMapping genMapping(const ConvWl& wl) = 0;
 	virtual vol_t get_ubuf_size() const = 0;
+
 	virtual ~CoreMapper() = default;
 };
 
@@ -103,15 +77,18 @@ class PolarMapper: public CoreMapper{
 	public:
 		// Partition...
 		enum class PartDim : std::uint8_t {C,K,H,W,B,NPARTS};
+
 		struct Part{
 			PartDim dimA, dimO;
 			static const char partName[];
 			std::string getName() const;
 		};
 		static const Part all_parts[];
+
 	private:
 		// Dataflow...
 		enum class DataFlow : std::uint8_t {KHWB,HWBK,NUM};
+
 		struct Loop{
 			len_t cnt;
 			len_t tot_above;
@@ -147,23 +124,29 @@ class PolarMapper: public CoreMapper{
 		CoreMapping best_map;
 
 		const PolarCore& core;
+
 		// MapCost allcst, hasl2;
 		void getCost(const ConvWl& wl);
-		//void _try_print(const Workload& wl, size_t i);
+		// void _try_print(const ConvWl& wl, size_t i);
+
 	public:
 		Instance(const PolarCore& _core);
+
 		CoreMapping genMapping(const ConvWl& wl);
 	};
+
 	const PolarCore& core;
+
 public:
 	PolarMapper(const PolarCore& _core);
-	virtual CoreMapping genMapping(const ConvWl& wl) override;
+
 	virtual void set_conv_utime(ConvLayer& l) const override;
+
+	virtual CoreMapping genMapping(const ConvWl& wl) override;
 	virtual vol_t get_ubuf_size() const override;
-	// virtual ~PolarMapper() override = default;
 };
 
-class EyerissMapper : public CoreMapper {
+class EyerissMapper : public CoreMapper{
 	class Instance{
 		/*
 		 * Unit_set means mapping a unit workload in a pe stripe.
@@ -189,17 +172,22 @@ class EyerissMapper : public CoreMapper {
 		CoreMapping best_map;
 
 		const EyerissCore& core;
+
 		void getCost(const ConvWl& wl);
+
 	public:
 		Instance(const EyerissCore& _core);
+
 		CoreMapping genMapping(const ConvWl& wl);
 	};
+
 	const EyerissCore& core;
+
 public:
 	EyerissMapper(const EyerissCore& _core);
+
 	virtual CoreMapping genMapping(const ConvWl& wl) override;
 	virtual vol_t get_ubuf_size() const override;
-	// virtual ~EyerissMapper() override = default;
 };
 
 #endif // COREMAPPING_H

@@ -73,22 +73,29 @@ DataLayout::Entry UniqueLayout::at(dataLen_t idx) const{
 }
 
 StdDataLayout::StdDataLayout(dataLen_t _len, pos_t* _posArr)
-	:range_len(_len), bcast_len(1), tot_len(_len), contPosArr((_len>0)?std::make_unique<pos_t[]>(_len):nullptr), posArr(_posArr){}
+	:range_len(_len), bcast_len(1), tot_len(_len),
+	 contPosArr((_len>0) ? std::make_unique<pos_t[]>(_len) : nullptr),
+	 posArr(_posArr){}
 
 DataLayout* StdDataLayout::clone() const{
 	StdDataLayout* newLayout = new StdDataLayout(tot_len, nullptr);
+
 	if(tot_len <= 0) return newLayout;
+
+	newLayout->totVolume = totVolume;
+	newLayout->maxVolume = maxVolume;
+	newLayout->multFactor = multFactor;
+
 	newLayout->range_len = range_len;
 	newLayout->bcast_len = bcast_len;
 	newLayout->bcast_down = bcast_down;
 	newLayout->bcast_step = bcast_step;
+
 	newLayout->rangeArr = std::make_unique<fmap_range[]>(range_len);
 	newLayout->posArr = newLayout->contPosArr.get();
 	memcpy(newLayout->rangeArr.get(), rangeArr.get(), sizeof(rangeArr[0]) * range_len);
 	memcpy(newLayout->posArr, posArr, sizeof(posArr[0]) * tot_len);
-	newLayout->totVolume = totVolume;
-	newLayout->maxVolume = maxVolume;
-	newLayout->multFactor = multFactor;
+
 	return newLayout;
 }
 
@@ -100,7 +107,7 @@ void StdDataLayout::finalize(){
 	if(bcast_len == 1){
 		memcpy(contPosArr.get(), posArr, sizeof(posArr[0]) * tot_len);
 	}
-	posArr = contPosArr.get();
+	posArr = contPosArr.get(); // used as alias for contPosArr.
 }
 
 void StdDataLayout::reset(){
@@ -149,28 +156,36 @@ void StdDataLayout::setCPosArr(){
 
 void StdDataLayout::setBcast(dataLen_t _bcastLen, dataLen_t _bcastStep){
 	bcast_len = _bcastLen;
-	range_len = tot_len / bcast_len;
 	bcast_step = _bcastStep;
 	bcast_down = _bcastStep * _bcastLen;
+
+	range_len = tot_len / bcast_len;
 	rangeArr.reset(new fmap_range[range_len]);
 	clear();
 }
 
 StdULayout::StdULayout(dataLen_t _len, pos_t* _posArr)
-	:UniqueLayout(_len), rangeArr((_len>0)?std::make_unique<fmap_range[]>(_len):nullptr), posArr(_posArr){}
+	:UniqueLayout(_len),
+	 rangeArr((_len>0) ? std::make_unique<fmap_range[]>(_len) : nullptr),
+	 posArr(_posArr){}
 
 UniqueLayout* StdULayout::clone() const{
 	StdULayout* newLayout = new StdULayout(len, nullptr);
+
 	if(len <= 0) return newLayout;
-	memcpy(newLayout->dimLen, dimLen, sizeof(dimLen[0]) * 4);
-	memcpy(newLayout->dimStep, dimStep, sizeof(dimStep[0]) * 4);
-	memcpy(newLayout->rangeArr.get(), rangeArr.get(), sizeof(rangeArr[0]) * len);
-	newLayout->localPosArr = std::make_unique<pos_t[]>(len);
-	newLayout->posArr = newLayout->localPosArr.get();
-	memcpy(newLayout->posArr, posArr, sizeof(posArr[0]) * len);
+
 	newLayout->totVolume = totVolume;
 	newLayout->maxVolume = maxVolume;
 	newLayout->multFactor = multFactor;
+
+	memcpy(newLayout->dimLen, dimLen, sizeof(dimLen[0]) * 4);
+	memcpy(newLayout->dimStep, dimStep, sizeof(dimStep[0]) * 4);
+	memcpy(newLayout->rangeArr.get(), rangeArr.get(), sizeof(rangeArr[0]) * len);
+
+	newLayout->localPosArr = std::make_unique<pos_t[]>(len);
+	newLayout->posArr = newLayout->localPosArr.get();
+	memcpy(newLayout->posArr, posArr, sizeof(posArr[0]) * len);
+
 	return newLayout;
 }
 
@@ -181,7 +196,7 @@ void StdULayout::finalize(){
 	}
 	localPosArr = std::make_unique<pos_t[]>(len);
 	memcpy(localPosArr.get(), posArr, sizeof(posArr[0])*len);
-	posArr = localPosArr.get();
+	posArr = localPosArr.get(); // used as alias for localPosArr.
 }
 
 void StdULayout::reset(){
@@ -189,6 +204,10 @@ void StdULayout::reset(){
 	memset(dimLen, 0, sizeof(dimLen[0])*4);
 	rangeArr.reset();
 	posArr = nullptr;
+}
+
+DataLayout::UniqueEntry StdULayout::operator[](dataLen_t idx) const{
+	return {rangeArr[idx], posArr[idx]/*, 1*/};
 }
 
 void StdULayout::setDims(dataLen_t C, dataLen_t B, dataLen_t H, dataLen_t W){
@@ -201,10 +220,6 @@ void StdULayout::setDims(dataLen_t C, dataLen_t B, dataLen_t H, dataLen_t W){
 	dimStep[2] = W;
 	dimStep[3] = 1;
 	clear();
-}
-
-DataLayout::UniqueEntry StdULayout::operator[](dataLen_t idx) const{
-	return {rangeArr[idx], posArr[idx]/*, 1*/};
 }
 
 StdULayout::IntersectIter StdULayout::get_intersect(const fmap_range& range, bool noBatch) const{
@@ -230,6 +245,7 @@ StdULayout::IntersectIter StdULayout::get_intersect(const fmap_range& range, boo
 	}
 	return IntersectIter(from, to, *this);
 }
+
 /*
 MemULayout::MemULayout(const fmap_range& _range, pos_t* _posArr, len_t memLen)
 	:UniqueLayout(memLen), range(_range), posArr(_posArr){}
@@ -243,6 +259,7 @@ DataLayout::UniqueEntry MemULayout::operator[](dataLen_t idx) const{
 	return {range, posArr[idx], len};
 }
 */
+
 UniqueLayout::Iterator::Iterator(const UniqueLayout& _layout, dataLen_t _i)
 	:i(_i), layout(_layout){}
 

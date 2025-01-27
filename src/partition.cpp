@@ -72,22 +72,26 @@ PartEngine::PartEngine(double _min_util):min_util(_min_util){
 
 PartIter PartEngine::init(cidx_t cluster_size, len_t batch_num, const Node& layer, PartSch& sch, len_t min_cuts){
 	if(cluster_size > MAX_BUF){
-		// TODO: add support for more cores.
 		assert(false);
 	}
+
+	const auto& ofm_shape = layer.layer().ofmap_shape();
+
 	PartIter it(sch, min_util);
 	it.min_ncut = min_cuts;
 	it.endPos = factors[cluster_size].end();
 	it.nextPos = factors[cluster_size].begin();
 	it.maxB = batch_num;
-	const auto& ofm_shape = layer.layer().ofmap_shape();
 	it.maxK = ofm_shape.c;
 	it.maxH = ofm_shape.h;
 	it.maxW = ofm_shape.w;
+
 	if(!it.nextPart()){
+		// If no valid partition found, return the best partition.
 		it.nextPos = factors[cluster_size].begin();
 		it.finished = !it.getBestPart();
 	}
+
 	return it;
 }
 
@@ -157,7 +161,8 @@ PartSch::PartSch(len_t _K, len_t _B, len_t _H, len_t _W)
 	:K(_K), B(_B), H(_H), W(_W){}
 
 len_t& PartSch::operator[](std::uint8_t i){
-	/*switch (i) {
+	/*
+	switch (i) {
 	case 0: return K;
 	case 1: return B;
 	case 2: return H;
@@ -167,12 +172,14 @@ len_t& PartSch::operator[](std::uint8_t i){
 	assert(false);
 	return B;
 	*/
+	// Trick which should not be used, but it works :)
 	return reinterpret_cast<len_t*>(this)[i];
 }
 
 
 const len_t& PartSch::operator[](std::uint8_t i) const{
-	/*switch (i) {
+	/*
+	switch (i) {
 	case 0: return K;
 	case 1: return B;
 	case 2: return H;
@@ -182,6 +189,7 @@ const len_t& PartSch::operator[](std::uint8_t i) const{
 	assert(false);
 	return B;
 	*/
+	// Trick which should not be used, but it works :)
 	return reinterpret_cast<const len_t*>(this)[i];
 }
 

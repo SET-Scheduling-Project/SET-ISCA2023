@@ -16,17 +16,78 @@ std::vector<pos_t> NoC::dram_list;
 
 NoC::NoC(bool _calc_bw): calc_bw(_calc_bw), tot_hops(0), tot_DRAM_acc(0){}
 
-/*
-void NoC::set_calc_bw(bool _calc_bw){
-	calc_bw = _calc_bw;
-	if(!calc_bw) link_hops.clear();
+NoC NoC::operator+(const NoC& other) const{
+	NoC x = *this;
+	return x += other;
 }
-*/
+
+NoC& NoC::operator+=(const NoC& other){
+	tot_hops += other.tot_hops;
+	tot_DRAM_acc += other.tot_DRAM_acc;
+	if(calc_bw || other.calc_bw){
+		assert(calc_bw && other.calc_bw);
+		link_hops += other.link_hops;
+	}
+	return *this;
+}
+
+NoC NoC::operator*(const len_t& batch) const{
+	NoC x = *this;
+	return x *= batch;
+}
+
+NoC& NoC::operator*=(const len_t& batch){
+	tot_hops *= batch;
+	tot_DRAM_acc *= batch;
+	if(calc_bw) link_hops *= batch;
+	return *this;
+}
+
+NoC& NoC::operator/=(const len_t& batch){
+	tot_hops /= batch;
+	tot_DRAM_acc /= batch;
+	if(calc_bw) link_hops /= batch;
+	return *this;
+}
+
+void NoC::div(len_t batch){
+	tot_hops /= batch;
+	tot_DRAM_acc /= batch;
+	if(calc_bw) link_hops.div(batch);
+}
 
 void NoC::clear(){
 	tot_hops = 0;
 	tot_DRAM_acc = 0;
 	link_hops.clear();
+}
+
+cycle_t NoC::get_time() const{
+	cycle_t dram_time = DIVCEIL(tot_DRAM_acc, (4*DRAM_bw));
+	if(!calc_bw) return dram_time;
+	cycle_t noc_time = DIVCEIL(link_hops.max(), NoC_bw);
+	return MAX(dram_time, noc_time);
+}
+
+energy_t NoC::get_cost() const{
+	//std::cout << "GC " << tot_hops << ' ' << tot_DRAM_acc << std::endl;
+	return tot_hops*hop_cost + tot_DRAM_acc*DRAM_acc_cost;
+}
+
+energy_t NoC::get_hop_cost() const{
+	return tot_hops*hop_cost;
+}
+
+NoC::hop_t NoC::get_tot_hops() const{
+	return tot_hops;
+}
+
+access_t NoC::get_tot_DRAM_acc() const{
+	return tot_DRAM_acc;
+}
+
+NoC::hop_t NoC::get_max_link() const{
+	return link_hops.max();
 }
 
 void NoC::fromRemoteMem(const DataLayout& toLayout){
@@ -73,24 +134,28 @@ void NoC::toRemoteMem(const UniqueLayout& fromLayout){
 
 void NoC::betweenLayout(const UniqueLayout& fromLayout, const DataLayout& toLayout, len_t fromCOffset, len_t fromB, len_t toB){
 	hop_t h = 0;
-	// TODO: change to generic UniqueLayout
+
 	const auto* fLayout = dynamic_cast<const StdULayout*>(&fromLayout);
 	if(fLayout == nullptr){
-		// TODO: add general case.
 		assert(false);
 		return;
 	}
+
 	bool diffB = (fromB != toB);
 	auto rLen = toLayout.rangeLength();
+
 	for(cidx_t i=0; i<rLen; ++i){
 		auto toEntry = toLayout.at(i);
 		fmap_range toRange = toEntry.range;
+
 		if(toRange.c.to <= fromCOffset) continue;
 		toRange.c -= fromCOffset;
+
 		for(auto it = fLayout->get_intersect(toRange, diffB);it.isValid();it.next()){
 			auto fromEntry = *it;
 			vol_t v = calc_intersect(fromEntry.range, toRange, fromB, toB);
 			if(v == 0) continue;
+
 			if(toEntry.numTile == 1){
 				h += unicastCalc(fromEntry.tile, *toEntry.tiles, v);
 			}else{
@@ -98,68 +163,52 @@ void NoC::betweenLayout(const UniqueLayout& fromLayout, const DataLayout& toLayo
 			}
 		}
 	}
+
 	if(fromB > toB)  h /= (fromB / toB);
+
 	tot_hops += h;
 }
 
-NoC NoC::operator+(const NoC& other) const{
-	NoC x = *this;
-	return x += other;
+std::ostream& operator<<(std::ostream& os, const NoC& noc){
+	return os << "NoC(hops=" << noc.tot_hops << ", DRAM acc=" << noc.tot_DRAM_acc << ")";
 }
 
-NoC& NoC::operator+=(const NoC& other){
-	tot_hops += other.tot_hops;
-	tot_DRAM_acc += other.tot_DRAM_acc;
-	if(calc_bw || other.calc_bw){
-		assert(calc_bw && other.calc_bw);
-		link_hops += other.link_hops;
+std::vector<NoC::link_info> NoC::get_link_info() const{
+	std::vector<link_info> info;
+	if(!calc_bw) return info;
+
+	info.reserve(link_hops.link_hops.size());
+	for(const auto& it: link_hops.link_hops){
+		size_t idx = it.first;
+		size_t dir = idx % 4;
+		idx /= 4;
+		mlen_t y = idx % Cluster::ylen;
+		idx /= Cluster::ylen;
+		mlen_t x = idx;
+		pos_t to;
+		switch(dir){
+		case 0:
+			to = {static_cast<mlen_t>(x+1), y};
+			break;
+		case 1:
+			to = {x, static_cast<mlen_t>(y-1)};
+			break;
+		case 2:
+			to = {static_cast<mlen_t>(x-1), y};
+			break;
+		case 3:
+			to = {x, static_cast<mlen_t>(y+1)};
+			break;
+		default:
+			assert(false);
+		}
+		info.push_back({{x, y}, to, it.second * link_hops.factor});
 	}
-	return *this;
-}
 
-NoC NoC::operator*(const len_t& batch) const{
-	NoC x = *this;
-	return x *= batch;
-}
+	// Sort in descending order.
+	std::sort(info.rbegin(), info.rend());
 
-NoC& NoC::operator*=(const len_t& batch){
-	tot_hops *= batch;
-	tot_DRAM_acc *= batch;
-	if(calc_bw) link_hops *= batch;
-	return *this;
-}
-
-NoC& NoC::operator/=(const len_t& batch){
-	tot_hops /= batch;
-	tot_DRAM_acc /= batch;
-	if(calc_bw) link_hops /= batch;
-	return *this;
-}
-
-void NoC::div(len_t batch){
-	tot_hops /= batch;
-	tot_DRAM_acc /= batch;
-	if(calc_bw) link_hops.div(batch);
-}
-
-NoC::hop_t NoC::get_tot_hops() const{
-	return tot_hops;
-}
-
-energy_t NoC::get_hop_cost() const{
-	return tot_hops*hop_cost;
-}
-
-energy_t NoC::get_cost() const{
-	//std::cout << "GC " << tot_hops << ' ' << tot_DRAM_acc << std::endl;
-	return tot_hops*hop_cost + tot_DRAM_acc*DRAM_acc_cost;
-}
-// TODO: add NoC time.
-cycle_t NoC::get_time() const{
-	cycle_t dram_time = DIVCEIL(tot_DRAM_acc, (4*DRAM_bw));
-	if(!calc_bw) return dram_time;
-	cycle_t noc_time = DIVCEIL(link_hops.max(), NoC_bw);
-	return MAX(dram_time, noc_time);
+	return info;
 }
 
 void NoC::unicast(pos_t src, pos_t dst, vol_t size){
@@ -257,49 +306,6 @@ void NoC::multicast_dram(const pos_t* dst, cidx_t len, vol_t size){
 	tot_DRAM_acc += size;
 }
 
-std::vector<NoC::link_info> NoC::get_link_info() const{
-	std::vector<link_info> info;
-	if(!calc_bw) return info;
-	info.reserve(link_hops.link_hops.size());
-	for(const auto& it: link_hops.link_hops){
-		size_t idx = it.first;
-		size_t dir = idx % 4;
-		idx /= 4;
-		mlen_t y = idx % Cluster::ylen;
-		idx /= Cluster::ylen;
-		mlen_t x = idx;
-		pos_t to;
-		switch(dir){
-		case 0:
-			to = {static_cast<mlen_t>(x+1), y};
-			break;
-		case 1:
-			to = {x, static_cast<mlen_t>(y-1)};
-			break;
-		case 2:
-			to = {static_cast<mlen_t>(x-1), y};
-			break;
-		case 3:
-			to = {x, static_cast<mlen_t>(y+1)};
-			break;
-		default:
-			assert(false);
-		}
-		info.push_back({{x, y}, to, it.second * link_hops.factor});
-	}
-	// Sort in descending.
-	std::sort(info.rbegin(), info.rend());
-	return info;
-}
-
-NoC::hop_t NoC::get_max_link() const{
-	return link_hops.max();
-}
-
-access_t NoC::get_tot_DRAM_acc() const{
-	return tot_DRAM_acc;
-}
-
 vol_t NoC::calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t bat1, len_t bat2){
 	fmap_range ints = rng1.intersect(rng2);
 	if(bat1 == bat2) return ints.size();
@@ -331,9 +337,6 @@ vol_t NoC::calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t 
 	return ints.size();
 }
 
-std::ostream& operator<<(std::ostream& os, const NoC& noc){
-	return os<<"NoC(hops="<<noc.tot_hops<<", DRAM acc="<<noc.tot_DRAM_acc<<")";
-}
 
 NoC::HopCount::HopCount():factor(1){}
 
@@ -387,6 +390,14 @@ void NoC::HopCount::div(len_t batch){
 	}
 }
 
+NoC::hop_t NoC::HopCount::max() const{
+	hop_t h = 0;
+	for(const auto& it: link_hops){
+		h = MAX(h, it.second);
+	}
+	return h * factor;
+}
+
 NoC::hop_t& NoC::HopCount::get(mlen_t x, mlen_t y, mlen_t dir){
 	assert(factor == 1);
 	size_t idx = (x * Cluster::ylen + y) * 4 + dir;
@@ -399,14 +410,6 @@ void NoC::HopCount::clear(){
 	link_hops.clear();
 }
 
-NoC::hop_t NoC::HopCount::max() const{
-	hop_t h = 0;
-	for(const auto& it: link_hops){
-		h = MAX(h, it.second);
-	}
-	return h * factor;
-}
-
 void NoC::HopCount::flat_factor(){
 	if(factor > 1){
 		for(const auto& it: link_hops){
@@ -415,6 +418,7 @@ void NoC::HopCount::flat_factor(){
 		factor = 1;
 	}
 }
+
 
 bool NoC::link_info::operator<(const link_info& other) const{
 	if(total_hops != other.total_hops) return total_hops < other.total_hops;
@@ -435,5 +439,3 @@ bool NoC::link_info::operator>(const link_info& other) const{
 std::ostream& operator<<(std::ostream& os, const NoC::link_info& info){
 	return os<<info.from<<" -> "<<info.to<<'\t'<<info.total_hops;
 }
-
-

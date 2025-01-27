@@ -1,3 +1,10 @@
+/* This file contains
+ *	Layer:  base class for all network layers
+ *  .*Layer: classes for each layer
+ *
+ *  One can add new type of layers as classes here.
+ */
+
 #ifndef LAYER_H
 #define LAYER_H
 
@@ -7,7 +14,10 @@
 #include "util.h"
 
 
-/* With the macros below, one can define layers more conveniently.
+/*
+ * FAST_INIT_LAYER
+ *
+ * With the macros below, one can define layers more conveniently.
  * Example:
  *     a = LAYER("conv1", Conv, C=64, K=128, H=32, R=3)
  * defines a conv layer with a 3*3*64*128 kernel and 32*32*128 ofmap.
@@ -45,38 +55,69 @@
 
 #endif // #ifndef NO_FAST_INIT_LAYER
 
+
 class Layer{
 protected:
 	std::string name;
-	utime_t unit_time;
+
+	utime_t unit_time; // NPT in SET paper.
+
 	// Ifm_shape contains padding.
 	fmap_shape ifm_shape, ofm_shape, wgt_shape;
-	bwidth_t bitwidth;
+
+	bwidth_t bitwidth; // Currently not used. Reserved for future use.
+
 	Layer(const std::string& _name, const fmap_shape& _ifm_shape, const fmap_shape& _ofm_shape, const fmap_shape& _wgt_shape);
 	Layer(const std::string& _name);
+
 public:
-	bwidth_t get_bitwidth() const;
-	void set_bitwidth(bwidth_t width);
 	const std::string& get_name() const;
+
 	utime_t get_utime() const;
 	void set_utime(utime_t time);
+
+	// tot_ifmap_shape(): ifmap_shape without padding
 	const fmap_shape& tot_ifmap_shape() const;
 	const fmap_shape& ofmap_shape() const;
 	const fmap_shape& weight_shape() const;
 
+	// Currently not used. Reserved for future use.
+	bwidth_t get_bitwidth() const;
+	void set_bitwidth(bwidth_t width);
+
+	// ifmap_shape with padding (if any)
 	virtual const fmap_shape& real_ifmap_shape() const =0;
+
+	// Size of weight, 0 for no weight.
 	virtual vol_t weight_size() const =0;
+
+	// Returns whether the padded ifmap shape is valid.
+	// If valid, will also set related parameters (e.g. padding in Conv)
 	virtual bool set_padded_ifm(const fmap_shape& padded_shape)=0;
+
+	// num of ops * batch_size
 	virtual access_t get_num_op(len_t batch_size=1) const =0;
+
+	// Calculates the range of ifmap needed to compute the ofmap *ofm_range*
+	// Results are written in-place to *ofm_range*
 	virtual void ofm_to_ifm(fmap_range& ofm_range) const =0;
-	/* Correspondance between weight(B(1), C, K, R, S) and fmap_range(B,C,H,W):
+
+	/*
+	 * Calculates the range of weights needed to compute the ofmap *ofm_range*
+	 * Results are written in-place to *ofm_range*
+	 *
+	 * Correspondance between weight(B(1), C, K, R, S) and fmap_range(B,C,H,W):
 	 * B = B(1)
 	 * C = K
 	 * H = C
 	 * W = R*S
 	 */
 	virtual void ofm_to_wgt(fmap_range& ofm_range) const =0;
+
+	// Returns whether different ofmap K (and same HW) needs different ifmap.
+	// e.g. false for ConvLayer(all C), true for LRLayer(C=K)
 	virtual bool fmap_channel_rel() const =0;
+
 	virtual ~Layer()=default;
 };
 
@@ -89,34 +130,44 @@ public:
 		 * // B batches in total.
 		 * Now there is no batch here.
 		 */
+
 		/* Default:
 		 * K=C, R=1, S=R, W=H, sH=1, sW=sH
+		 *
+		 * Must init C, H
 		 */
-		// Must init C, H
 		len_t C,K=0,R=1,S=0,H,W=0,sH=1,sW=0;
 		access_t tot_op;
+
 		void init();
+
 		vol_t ifm_size(len_t batch_size) const;
 		vol_t fil_size() const;
 		vol_t ofm_size(len_t batch_size) const;
+
 		void update_op();
 		access_t calc_op(len_t batch_size) const;
 	};
+
 protected:
 	Workload wl;
 	fmap_shape padded_ifm_shape;
 	len_t pad_h, pad_w;
 	vol_t wgt_size;
+
 public:
 	ConvLayer(const std::string& _name, const Workload& _wl);
+
+	const Workload& get_workload() const;
+
 	virtual const fmap_shape& real_ifmap_shape() const override;
 	virtual vol_t weight_size() const override;
-	const Workload& get_workload() const;
 	virtual bool set_padded_ifm(const fmap_shape& padded_shape) override;
 	virtual access_t get_num_op(len_t batch_size=1) const override;
 	virtual void ofm_to_ifm(fmap_range& ofm_range) const override;
 	virtual void ofm_to_wgt(fmap_range& ofm_range) const override;
 	virtual bool fmap_channel_rel() const override;
+
 	virtual ~ConvLayer() override=default;
 };
 
@@ -129,25 +180,34 @@ public:
 		 * // B batches in total.
 		 * Now there is no batch here.
 		 */
+
 		/* Default:
 		 * K=C, R=1, S=R, W=H, sH=1, sW=sH
+		 *
+		 * Must init G, C, H
 		 */
-		// Must init G, C, H
 		len_t G;
+
 		// C and K for one group. No need to set.
 		len_t GC, GK;
+
 	public:
 		void init();
 		vol_t fil_size() const;
 	};
+
 protected:
 	Workload wl;
+
 public:
 	GroupConvLayer(const std::string& _name, const Workload& _wl);
+
 	const Workload& get_workload() const;
+
 	virtual void ofm_to_ifm(fmap_range& ofm_range) const override;
 	virtual void ofm_to_wgt(fmap_range& ofm_range) const override;
 	virtual bool fmap_channel_rel() const override;
+
 	virtual ~GroupConvLayer() override=default;
 };
 
@@ -162,7 +222,9 @@ public:
 		 */
 		len_t C,K,IH=1,IW=0;
 	};
+
 	FCLayer(const std::string& _name, const Workload& wl);
+
 	virtual void ofm_to_ifm(fmap_range& ofm_range) const override;
 };
 
@@ -176,24 +238,31 @@ public:
 		 * // B batches in total.
 		 * Now there is no batch here.
 		 */
+
 		/* Default:
 		 * W=H, S=R, sK=N, sH=R, sW=sH
 		 * Most of the time we have sK=N, sH=R, sW=sH.
+		 *
+		 * Needs K, H, N, R
 		 */
-		// Needs K, H, N, R
 		len_t K,H,W=0,N,R,S=0,sK=0,sH=0,sW=0;
 		access_t tot_op;
+
 		void init();
 		void update_op();
 		access_t calc_op(len_t batch_size) const;
 	};
+
 protected:
 	fmap_shape padded_ifm_shape;
 	Workload wl;
 	len_t pad_h, pad_w;
+
 	LRLayer(const std::string& _name, const Workload& _wl);
+
 public:
 	const Workload& get_workload() const;
+
 	virtual const fmap_shape& real_ifmap_shape() const override;
 	virtual vol_t weight_size() const override;
 	virtual bool set_padded_ifm(const fmap_shape& padded_shape) override = 0;
@@ -201,6 +270,7 @@ public:
 	virtual void ofm_to_ifm(fmap_range& ofm_range) const override = 0;
 	virtual void ofm_to_wgt(fmap_range& ofm_range) const override;
 	virtual bool fmap_channel_rel() const override;
+
 	virtual ~LRLayer() override =default;
 };
 
@@ -213,16 +283,21 @@ public:
 		 * // B batches in total.
 		 * Now there is no batch here.
 		 */
+
 		/* Default:
 		 * W=H, S=R, sH=R, sW=sH
 		 * Most of the time we have sH=R, sW=sH.
+		 *
+		 * Needs K, H, R
 		 */
-		// Needs K, H, R
 		len_t K,H,W=0,R,S=0,sH=0,sW=0;
 	};
+
 	PoolingLayer(const std::string& _name, const Workload& wl);
+
 	virtual bool set_padded_ifm(const fmap_shape& padded_shape) override;
 	virtual void ofm_to_ifm(fmap_range& ofm_range) const override;
+
 	virtual ~PoolingLayer() override =default;
 };
 
@@ -237,9 +312,12 @@ public:
 		 */
 		len_t N,K,H,W=0;
 	};
+
 	EltwiseLayer(const std::string& _name, const Workload& wl);
+
 	virtual bool set_padded_ifm(const fmap_shape& padded_shape) override;
 	virtual void ofm_to_ifm(fmap_range& ofm_range) const override;
+
 	virtual ~EltwiseLayer() override =default;
 };
 
@@ -256,9 +334,12 @@ public:
 		// Needs K, H
 		len_t K,H,W=0;
 	};
+
 	PTPLayer(const std::string& _name, const Workload& wl);
+
 	virtual bool set_padded_ifm(const fmap_shape& padded_shape) override;
 	virtual void ofm_to_ifm(fmap_range& ofm_range) const override;
+
 	virtual ~PTPLayer() override =default;
 };
 
@@ -270,6 +351,7 @@ public:
 		W=2,
 		NUM=3
 	};
+
 	struct Workload{
 		/* Ifmap: K*H*W
 		 * Filter: 0
@@ -277,20 +359,27 @@ public:
 		 * // B batches in total.
 		 * Now there is no batch here.
 		 */
+
 		// Default: W=H
 		// Needs K, H
 		len_t K,H,W=0;
 		dim order[dim::NUM];
+
 		Workload();
+
 		void init();
 		fmap_range::dim_range& get_origin_dim(fmap_range& range, dim d) const;
 	};
+
 protected:
 	Workload wl;
+
 public:
 	TransposeLayer(const std::string& _name, const Workload& _wl);
+
 	virtual bool set_padded_ifm(const fmap_shape& padded_shape) override;
 	virtual void ofm_to_ifm(fmap_range& ofm_range) const override;
+
 	virtual ~TransposeLayer() override =default;
 };
 

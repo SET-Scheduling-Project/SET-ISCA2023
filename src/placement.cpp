@@ -8,23 +8,38 @@
 
 
 PlaceEngine placeEngine;
-/*
-PlaceSch::PlaceSch(len_t _batch):batch_size(_batch){
-}
-*/
 
-PlaceSch::PlaceSch(const PlaceSch& sch):part(sch.part),
-	ifmLayout(sch.ifmLayout->clone()),
-	wgtLayout(sch.wgtLayout->clone()),
-	ofmLayout(sch.ofmLayout->clone()){
+PlaceSch::PlaceSch(const PlaceSch& sch)
+	:part(sch.part),
+	 ifmLayout(sch.ifmLayout->clone()),
+	 wgtLayout(sch.wgtLayout->clone()),
+	 ofmLayout(sch.ofmLayout->clone())
+{
 	memcpy(order, sch.order, sizeof(order[0])*4);
 }
 
-void PlaceSch::finalize(){
-	ifmLayout->finalize();
-	wgtLayout->finalize();
-	ofmLayout->finalize();
-	permuteOrder.reset();
+DataLayout& PlaceSch::getIfmL(){
+	return *ifmLayout.get();
+}
+
+const DataLayout& PlaceSch::getIfmL() const{
+	return *ifmLayout.get();
+}
+
+DataLayout& PlaceSch::getWgtL(){
+	return *wgtLayout.get();
+}
+
+const DataLayout& PlaceSch::getWgtL() const{
+	return *wgtLayout.get();
+}
+
+UniqueLayout& PlaceSch::getOfmL(){
+	return *ofmLayout.get();
+}
+
+const UniqueLayout& PlaceSch::getOfmL() const{
+	return *ofmLayout.get();
 }
 
 void PlaceSch::initPlacement(const Cluster& cluster){
@@ -53,34 +68,13 @@ void PlaceSch::initPlacement(const Cluster& cluster){
 void PlaceSch::update(PlaceSch&& sch){
 	part = sch.part;
 	memcpy(order, sch.order, sizeof(order[0])*4);
-	//ifmLayout = std::move(sch.ifmLayout);
-	//wgtLayout = std::move(sch.wgtLayout);
-	//ofmLayout = std::move(sch.ofmLayout);
-	//permuteOrder = std::move(sch.permuteOrder);
 }
 
-DataLayout& PlaceSch::getIfmL(){
-	return *ifmLayout.get();
-}
-
-const DataLayout& PlaceSch::getIfmL() const{
-	return *ifmLayout.get();
-}
-
-DataLayout& PlaceSch::getWgtL(){
-	return *wgtLayout.get();
-}
-
-const DataLayout& PlaceSch::getWgtL() const{
-	return *wgtLayout.get();
-}
-
-UniqueLayout& PlaceSch::getOfmL(){
-	return *ofmLayout.get();
-}
-
-const UniqueLayout& PlaceSch::getOfmL() const{
-	return *ofmLayout.get();
+void PlaceSch::finalize(){
+	ifmLayout->finalize();
+	wgtLayout->finalize();
+	ofmLayout->finalize();
+	permuteOrder.reset();
 }
 
 std::ostream& operator<<(std::ostream& os, const PlaceSch& sch){

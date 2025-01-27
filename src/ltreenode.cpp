@@ -34,14 +34,6 @@ void LTreeNode::add(LTreeNode* child){
 	children.push_back(child);
 }
 
-void LTreeNode::confirm(){
-	isNewNode = false;
-	modified = false;
-	for(auto it: children){
-		it->confirm();
-	}
-}
-
 bool LTreeNode::isModified() const{
 	return modified;
 }
@@ -50,15 +42,25 @@ bool LTreeNode::isNew() const{
 	return isNewNode;
 }
 
+void LTreeNode::confirm(){
+	isNewNode = false;
+	modified = false;
+	for(auto it: children){
+		it->confirm();
+	}
+}
+
 LTreeNode* LTreeNode::copy() const{
-	LTreeNode * l = new LTreeNode(*this);
+	LTreeNode* l = new LTreeNode(*this);
 	l->children.clear();
+
 	LTreeNode* c;
-	for(auto child:children){
+	for(auto child : children){
 		c = child->copy();
 		c->parent = l;
 		l->children.push_back(c);
 	}
+
 	return l;
 }
 
@@ -111,11 +113,7 @@ const Bitset& LTreeNode::get_dirp_set() const{
 }
 
 bool LTreeNode::is_shortcut(lid_t from_id, const LTreeNode& to){
-	/*
-	std::cout << "SCT ";
-	std::cout << network->getNode(from_id).name() << ' ';
-	std::cout << network->getNode(to.layer_set.first()).name() << std::endl;
-	*/
+	// Find lca of "from" and "to"
 	const LTreeNode* lca = to.parent;
 	const LTreeNode* to_child = &to;
 	while(!lca->layer_set.contains(from_id)){
@@ -123,36 +121,44 @@ bool LTreeNode::is_shortcut(lid_t from_id, const LTreeNode& to){
 		lca = lca->parent;
 		assert(lca);
 	}
+
+	// Find child of lca that contains "to"
 	bool found = false;
-	lid_t from_pos=0, to_pos=0;
+	lid_t from_pos = 0, to_pos = 0;
 	lid_t i=static_cast<lid_t>(lca->children.size());
-	while (i-->0) {
+	while (i-- > 0) {
 		if(lca->children[i] == to_child){
-			found=true;
-			to_pos=i;
+			found = true;
+			to_pos = i;
 			break;
 		}
 	}
 	assert(found);
+
+	// Find child of lca that contains "from"
 	found = false;
-	while (i-->0) {
+	while (i-- > 0) {
 		const Bitset& cur_set = lca->children[i]->layer_set;
 		if(cur_set.contains(from_id)){
-			found=true;
-			from_pos=i;
+			found = true;
+			from_pos = i;
 			break;
 		}
 	}
 	assert(found);
-	bool is_sc=(lca->parent == nullptr && lca->t == NodeType::T);
+
+	// Determine whether "from -> to" is a shortcut
+	bool is_sc = (lca->parent == nullptr && lca->t == NodeType::T);
 	if(lca->t == NodeType::S){
 		is_sc |= (lca->stage[to_pos] > lca->stage[from_pos]+1);
 	}else{
 		assert(lca->t == NodeType::T);
 		is_sc |= to_pos > from_pos+1;
 	}
+
+	// If is shortcut, set to_dram of "from" to true.
 	if(is_sc){
-		LTreeNode* from_node=lca->children[from_pos];
+		LTreeNode* from_node = lca->children[from_pos];
 		while (from_node->t != NodeType::L) {
 			for(auto* n: from_node->children){
 				if(n->layer_set.contains(from_id)){
@@ -163,21 +169,23 @@ bool LTreeNode::is_shortcut(lid_t from_id, const LTreeNode& to){
 		}
 		from_node->to_dram = true;
 	}
-	//std::cout << "case2 " << is_sc << ' ' << (int)from_pos << ' ' << (int)to_pos << std::endl;
+
 	return is_sc;
 }
 
 void LTreeNode::traverse(){
-	//std::cout << children.size() << '#' << std::endl;
-
 	if(t == NodeType::L){
+		// Init lnode
 		assert(layer_set.count() == 1);
+
 		const Node& n = network->getNode(layer_set.first());
+
 		unit_time = n.get_utime();
 		num_bgrp = 1;
-		to_dram=(n.get_nexts().count() == 0);
-		dirp_set.clear();
+		to_dram = (n.get_nexts().count() == 0);
 		height = 0;
+
+		dirp_set.clear();
 		const Bitset& prevs = n.getPrevs();
 		FOR_BITSET(it, prevs){
 			lid_t prev = it;
@@ -185,26 +193,35 @@ void LTreeNode::traverse(){
 				dirp_set.set(prev);
 			}
 		}
+
 		return;
 	}
+
+	// Sets "num_bgrp"
 
 	assert(children.size() > 0);
 	len_t child_batch = children.front()->num_batch;
 	assert(num_batch % child_batch == 0);
 	num_bgrp = num_batch / child_batch;
 
+	// Sets "unit_time" and "height"
+
 	unit_time = 0;
 	height = 0;
+
 	for(auto child: children){
 		assert(child->num_batch == child_batch);
 		child->traverse();
 		unit_time += child->unit_time;
 		height = MAX(height, child->height + 1);
 	}
+
 	if(t == NodeType::S) unit_time = (unit_time * (num_bgrp + num_stage)) / num_bgrp;
 }
 
 void LTreeNode::traverse_lset(bool calc_type){
+
+	// Whether type "t" needs to be calculated
 	calc_type |= (t == NodeType::L) && (children.size() > 0);
 	if(calc_type){
 		if(children.size() == 0){
@@ -234,22 +251,29 @@ void LTreeNode::traverse_lset(bool calc_type){
 	modified = isNewNode;
 	for(auto child: children){
 		child->traverse_lset(calc_type);
+
 		if(calc_lset) layer_set |= child->layer_set;
-		// Calc child's stage.
+
+		// Calc child's stage (in S cut).
 		if(calc_stage){
 			lid_t cur_stage = 0;
 			size_t cur_pos = 0;
+
 			for(auto prev_ch: children){
 				if(prev_ch == child) break;
+
 				lid_t last_stage = stage[cur_pos++];
+
 				if(last_stage < cur_stage) continue;
 				if(network->has_dep(prev_ch->layer_set, child->layer_set)){
 					cur_stage = last_stage + 1;
 					num_stage = MAX(num_stage, cur_stage);
 				}
 			}
+
 			stage.push_back(cur_stage);
 		}
+
 		modified |= child->modified;
 	}
 }
