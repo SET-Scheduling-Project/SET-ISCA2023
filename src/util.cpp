@@ -5,8 +5,10 @@
 
 vol_t ofm_ubuf_vol;
 
-cost_t default_cost(energy_t energy, cycle_t time){
-	return energy * time;
+namespace {
+	cost_t default_cost(energy_t energy, cycle_t time){
+		return energy * time;
+	}
 }
 
 std::function<cost_t(energy_t, cycle_t)> cost_func = default_cost;

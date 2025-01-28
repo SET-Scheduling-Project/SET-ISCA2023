@@ -59,12 +59,14 @@ void WholeSch::min(WholeSch& w_sch){
 }
 
 
-static std::size_t find(const LTreeNode::node_vec& vec, LTreeNode* node){
-	for(std::size_t i=0; i<vec.size(); ++i){
-		if(vec[i] == node) return i;
+namespace {
+	std::size_t find(const LTreeNode::node_vec& vec, LTreeNode* node){
+		for(std::size_t i=0; i<vec.size(); ++i){
+			if(vec[i] == node) return i;
+		}
+		assert(false);
+		return vec.size();
 	}
-	assert(false);
-	return vec.size();
 }
 
 int SAEngine::nrounds;
@@ -95,7 +97,9 @@ bool SAEngine::withProb(double prob){
 }
 
 /*
-static std::mutex m;
+namespace {
+	static std::mutex m;
+}
 void SAEngine::ping_func(volatile bool& stop) const{
 	while(true){
 		for(int i=0; i<120; ++i){

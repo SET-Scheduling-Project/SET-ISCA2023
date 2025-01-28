@@ -26,12 +26,8 @@ LTreeNode::~LTreeNode(){
 }
 
 void LTreeNode::init_root(){
-	traverse_lset();
-	traverse();
-}
-
-void LTreeNode::add(LTreeNode* child){
-	children.push_back(child);
+	traverse_pass1();
+	traverse_pass2();
 }
 
 bool LTreeNode::isModified() const{
@@ -112,6 +108,10 @@ const Bitset& LTreeNode::get_dirp_set() const{
 	return dirp_set;
 }
 
+void LTreeNode::add(LTreeNode* child){
+	children.push_back(child);
+}
+
 bool LTreeNode::is_shortcut(lid_t from_id, const LTreeNode& to){
 	// Find lca of "from" and "to"
 	const LTreeNode* lca = to.parent;
@@ -125,7 +125,7 @@ bool LTreeNode::is_shortcut(lid_t from_id, const LTreeNode& to){
 	// Find child of lca that contains "to"
 	bool found = false;
 	lid_t from_pos = 0, to_pos = 0;
-	lid_t i=static_cast<lid_t>(lca->children.size());
+	lid_t i = static_cast<lid_t>(lca->children.size());
 	while (i-- > 0) {
 		if(lca->children[i] == to_child){
 			found = true;
@@ -173,7 +173,65 @@ bool LTreeNode::is_shortcut(lid_t from_id, const LTreeNode& to){
 	return is_sc;
 }
 
-void LTreeNode::traverse(){
+void LTreeNode::traverse_pass1(bool calc_type){
+	// Whether type "t" needs to be calculated
+	calc_type |= (t == NodeType::L) && (children.size() > 0);
+	if(calc_type){
+		if(children.size() == 0){
+			t = NodeType::L;
+		}else{
+			assert(parent != nullptr);
+			t = (parent->t == NodeType::S) ? NodeType::T : NodeType::S;
+		}
+	}
+
+	bool calc_lset = (layer_set.count() == 0);
+
+	// Check if we need to calculate each subset's stage.
+	bool calc_stage = false;
+	if(t == NodeType::S){
+		if(calc_lset || stage.size() != children.size()){
+			stage.clear();
+			stage.reserve(children.size());
+			num_stage = 0;
+			calc_stage = true;
+		}
+	}else{
+		stage.clear();
+		num_stage = 0;
+	}
+
+	modified = isNewNode;
+	for(auto child: children){
+		child->traverse_pass1(calc_type);
+
+		if(calc_lset) layer_set |= child->layer_set;
+
+		// Calc child's stage (in S cut).
+		if(calc_stage){
+			lid_t cur_stage = 0;
+			size_t cur_pos = 0;
+
+			for(auto prev_ch: children){
+				if(prev_ch == child) break;
+
+				lid_t last_stage = stage[cur_pos++];
+
+				if(last_stage < cur_stage) continue;
+				if(network->has_dep(prev_ch->layer_set, child->layer_set)){
+					cur_stage = last_stage + 1;
+					num_stage = MAX(num_stage, cur_stage);
+				}
+			}
+
+			stage.push_back(cur_stage);
+		}
+
+		modified |= child->modified;
+	}
+}
+
+void LTreeNode::traverse_pass2(){
 	if(t == NodeType::L){
 		// Init lnode
 		assert(layer_set.count() == 1);
@@ -211,69 +269,10 @@ void LTreeNode::traverse(){
 
 	for(auto child: children){
 		assert(child->num_batch == child_batch);
-		child->traverse();
+		child->traverse_pass2();
 		unit_time += child->unit_time;
 		height = MAX(height, child->height + 1);
 	}
 
 	if(t == NodeType::S) unit_time = (unit_time * (num_bgrp + num_stage)) / num_bgrp;
-}
-
-void LTreeNode::traverse_lset(bool calc_type){
-
-	// Whether type "t" needs to be calculated
-	calc_type |= (t == NodeType::L) && (children.size() > 0);
-	if(calc_type){
-		if(children.size() == 0){
-			t = NodeType::L;
-		}else{
-			assert(parent != nullptr);
-			t = (parent->t == NodeType::S) ? NodeType::T : NodeType::S;
-		}
-	}
-
-	bool calc_lset = (layer_set.count() == 0);
-
-	// Check if we need to calculate each subset's stage.
-	bool calc_stage = false;
-	if(t == NodeType::S){
-		if(calc_lset || stage.size() != children.size()){
-			stage.clear();
-			stage.reserve(children.size());
-			num_stage = 0;
-			calc_stage = true;
-		}
-	}else{
-		stage.clear();
-		num_stage = 0;
-	}
-
-	modified = isNewNode;
-	for(auto child: children){
-		child->traverse_lset(calc_type);
-
-		if(calc_lset) layer_set |= child->layer_set;
-
-		// Calc child's stage (in S cut).
-		if(calc_stage){
-			lid_t cur_stage = 0;
-			size_t cur_pos = 0;
-
-			for(auto prev_ch: children){
-				if(prev_ch == child) break;
-
-				lid_t last_stage = stage[cur_pos++];
-
-				if(last_stage < cur_stage) continue;
-				if(network->has_dep(prev_ch->layer_set, child->layer_set)){
-					cur_stage = last_stage + 1;
-					num_stage = MAX(num_stage, cur_stage);
-				}
-			}
-
-			stage.push_back(cur_stage);
-		}
-
-		modified |= child->modified;
-	}
 }

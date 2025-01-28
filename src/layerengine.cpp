@@ -6,6 +6,10 @@
 #include "partition.h"
 
 
+bool LayerScheme::isValid() const{
+	return totCost.isValid();
+}
+
 StdLayerEngine::StdLayerEngine(CoreMapper* _mapper):mapper(_mapper){}
 
 vol_t StdLayerEngine::get_ubuf_size() const{
@@ -37,13 +41,13 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 	const Node& layerT = curNode->layert;
 	const Layer& layer = layerT.layer();
 	const fmap_shape& ofmShape = layer.ofmap_shape();
-	len_t totBatch = LNode::tot_batch;
-	len_t B = curNode->num_batch;
-	bool wgt_B = layerT.hasWgtPrevs();
+	const len_t totBatch = LNode::tot_batch;
+	const len_t B = curNode->num_batch;
+	const bool wgt_B = layerT.hasWgtPrevs();
 
-	cidx_t numCores = cluster.num_cores();
+	const cidx_t numCores = cluster.num_cores();
 	const Core::Buffer& ubuf = mapper->core().ubuf();
-	vol_t totUbufSize = ubuf.Size * numCores;
+	const vol_t totUbufSize = ubuf.Size * numCores;
 
 	/* ########## Current scheme ########## */
 
@@ -53,21 +57,24 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 	NoC noc(false);
 
 	PlaceSch placeSch;
-	pos_t* permOrder = new pos_t[numCores];
-	placeSch.permuteOrder.reset(permOrder);
-	placeSch.ifmLayout = std::make_unique<StdDataLayout>(numCores, permOrder);
-	if(layer.weight_size() > 0)
-		placeSch.wgtLayout = std::make_unique<StdDataLayout>(numCores, permOrder);
-	else
-		placeSch.wgtLayout = std::make_unique<StdDataLayout>(0, nullptr);
-	placeSch.ofmLayout = std::make_unique<StdULayout>(numCores, permOrder);
+	{
+		pos_t* permOrder = new pos_t[numCores];
+		placeSch.permuteOrder.reset(permOrder);
+		placeSch.ifmLayout = std::make_unique<StdDataLayout>(numCores, permOrder);
+		if(layer.weight_size() > 0)
+			placeSch.wgtLayout = std::make_unique<StdDataLayout>(numCores, permOrder);
+		else
+			placeSch.wgtLayout = std::make_unique<StdDataLayout>(0, nullptr);
+		placeSch.ofmLayout = std::make_unique<StdULayout>(numCores, permOrder);
+		// permOrder = nullptr; // Handled to placeSch.permuteOrder
+	}
 
 	PartSch& partSch = placeSch.part;
 
 	/* ########## Search iterations ########## */
 
 	// For ubuf energy
-	energy_t ubufOfm = ofmShape.tot_size(B) * ubuf.RCost;
+	const energy_t ubufOfm = ofmShape.tot_size(B) * ubuf.RCost;
 	energy_t ubufTotal;
 
 	// Minimal cuts on ifmap. Ifmap tile should not use too much ubuf.
@@ -114,12 +121,11 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 
 		// Iterate over all placements.
 		auto placeIter = placeEngine.init(placeSch);
-		// assert(placeIter);
+		// Placement must yield at least one valid scheme
+		assert(placeIter);
 		do{
 			// Init placement
 			placeSch.initPlacement(cluster);
-			static_cast<StdDataLayout&>(placeSch.getIfmL()).setCPosArr();
-			static_cast<StdDataLayout&>(placeSch.getWgtL()).setCPosArr();
 
 			calcNoC(noc, placeSch, curNode);
 
@@ -155,8 +161,6 @@ LayerScheme StdLayerEngine::search(LNode* curNode) const{
 
 		// Init placement
 		layerSch.place.initPlacement(cluster);
-		static_cast<StdDataLayout&>(layerSch.place.getIfmL()).setCPosArr();
-		static_cast<StdDataLayout&>(layerSch.place.getWgtL()).setCPosArr();
 
 		// Finalize layerSch.place
 		layerSch.place.finalize();
@@ -173,12 +177,12 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 
 	const PartSch& part = place.part;
 	const Layer& layer = layerT.layer();
-	bool fmap_K = layer.fmap_channel_rel();
-	bool hasWgt = layer.weight_size() > 0;
-	bool wgt_B = layerT.hasWgtPrevs();
+	const bool fmap_K = layer.fmap_channel_rel();
+	const bool hasWgt = layer.weight_size() > 0;
+	const bool wgt_B = layerT.hasWgtPrevs();
 
 	// Intervals on each dimension.
-	len_t* arrs[4];
+	const len_t* arrs[4];
 	arrs[0] = part_intv(ofmShape.c, part.K);
 	arrs[1] = part_intv(B, part.B);
 	arrs[2] = part_intv(ofmShape.h, part.H);
@@ -186,6 +190,9 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 
 	/* ########## Set fmap layouts ########## */
 
+	assert(REF_IS_INSTANCE(place.getOfmL(), StdULayout));
+	assert(REF_IS_INSTANCE(place.getIfmL(), StdDataLayout));
+	assert(REF_IS_INSTANCE(place.getWgtL(), StdDataLayout));
 	auto& ofmLayout = static_cast<StdULayout&>(place.getOfmL());
 	auto& ifmLayout = static_cast<StdDataLayout&>(place.getIfmL());
 	auto& wgtLayout = static_cast<StdDataLayout&>(place.getWgtL());
@@ -209,7 +216,7 @@ void StdLayerEngine::initLayouts(PlaceSch& place, const Node& layerT, const fmap
 	/* ########## Set rangeArr ########## */
 
 	fmap_range::dim_range kRange, bRange, hRange, wRange;
-	fmap_range emptyRange({0, 0}, {0, 0}, {0, 0}, {0, 0});
+	const fmap_range emptyRange({0, 0}, {0, 0}, {0, 0}, {0, 0});
 
 	auto* ofmArr = ofmLayout.rangeArr.get();
 	auto* ifmArr = ifmLayout.rangeArr.get();
@@ -281,8 +288,8 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 	noc.clear();
 
 	const Node& layerT = curNode->layert;
-	len_t B = curNode->num_batch;
-	bool wgt_B = layerT.hasWgtPrevs();
+	const len_t B = curNode->num_batch;
+	const bool wgt_B = layerT.hasWgtPrevs();
 
 	len_t curC;
 
@@ -292,10 +299,10 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 		curC = 0;
 		const auto& prevs = layerT.getWgtPrevs();
 		FOR_BITSET(it, prevs){
-			lid_t prev = it;
-			len_t prevC = network->getNode(prev).layer().ofmap_shape().c;
+			const lid_t prev = it;
+			const len_t prevC = network->getNode(prev).layer().ofmap_shape().c;
 			if(curNode->get_dirp_set().contains(prev)){
-				LNode* fromNode = (*(curNode->lnodeList))[prev];
+				const LNode* fromNode = (*(curNode->lnodeList))[prev];
 				const auto& fromLayout = fromNode->get_place_sch().getOfmL();
 				noc.betweenLayout(fromLayout, place.getWgtL(), curC, fromNode->num_batch, B);
 			}else{
@@ -325,18 +332,18 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 			curC = 0;
 			++cur_N;
 		}else{
-			// Here we have asserted input_C < elt_K for eltwise layer, so its fine.
-			assert(curC <= elt_K);
+			// This is checked when eltwise layer is added to the network.
+			assert(curC < elt_K);
 		}
 	}
 
 	// Fetch each prev layer from its ofmap/mem layout
 	const auto& prevs = layerT.getIfmPrevs();
 	FOR_BITSET(it, prevs){
-		lid_t prev = it;
-		len_t prevC = network->getNode(prev).layer().ofmap_shape().c;
+		const lid_t prev = it;
+		const len_t prevC = network->getNode(prev).layer().ofmap_shape().c;
 		if(curNode->get_dirp_set().contains(prev)){
-			LNode* fromNode = (*(curNode->lnodeList))[prev];
+			const LNode* fromNode = (*(curNode->lnodeList))[prev];
 			const auto& fromLayout = fromNode->get_place_sch().getOfmL();
 			noc.betweenLayout(fromLayout, place.getIfmL(), curC, fromNode->num_batch, B);
 		}else{
@@ -349,8 +356,8 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 				curC = 0;
 				++cur_N;
 			}else{
-				// Here we have asserted input_C < elt_K for eltwise layer, so its fine.
-				assert(curC <= elt_K);
+				// This is checked when eltwise layer is added to the network.
+				assert(curC < elt_K);
 			}
 		}
 	}
@@ -370,8 +377,4 @@ void StdLayerEngine::calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) co
 		layerSch.place.memLayout = std::make_unique<MemULayout>(ofmRange, NoC::dram_list.data(), NoC::dram_list.size());
 	}
 	*/
-}
-
-bool LayerScheme::isValid() const{
-	return totCost.isValid();
 }

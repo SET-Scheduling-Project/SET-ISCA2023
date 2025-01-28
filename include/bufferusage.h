@@ -1,5 +1,5 @@
 /* This file contains
- *	BufferUsage: a class that records the occupied buffer size of each chip.
+ *	BufferUsage: a class that records the occupied buffer size of each core.
  */
 
 #ifndef BUFFERUSAGE_H
@@ -14,8 +14,8 @@
 // Records the usage of each buffer
 class BufferUsage{
 private:
-	// usage: records size of used buffer on each chip
-	// usage[chip] = used_buffer_size_on_this_chip
+	// usage: records size of used buffer on each core
+	// usage[core] = used_buffer_size_on_this_core
 	std::unordered_map<pos_t, vol_t, pos_hash> usage;
 
 	// capacity: maximal volume of each buffer
@@ -40,16 +40,16 @@ public:
 	// Chip-wise "max" with other.
 	void max_with(const BufferUsage& other);
 
-	// Add to a chip.
-	bool add(pos_t chip, vol_t size);
-	// Adds to all chips in usage.
+	// Add to a core.
+	bool add(pos_t core, vol_t size);
+	// Adds to all cores in usage.
 	bool all_add(vol_t size);
-	// Multiple size of all chips in usage.
+	// Multiple size of all cores in usage.
 	bool multiple(vol_t n);
 
-	// Maximal usage among all chips.
+	// Maximal usage among all cores.
 	vol_t max() const;
-	// Average usage among all chips.
+	// Average usage among all cores.
 	double avg() const;
 	// Get maximal capacity of buffer.
 	vol_t get_capacity() const;

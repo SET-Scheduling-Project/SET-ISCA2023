@@ -38,8 +38,10 @@ private:
 	class HopCount{
 		friend NoC;
 
+		typedef std::int32_t linkIdx_t;
+
 		// link_hops[link_id] = hops_on_link_id
-		std::unordered_map<size_t, hop_t> link_hops;
+		std::unordered_map<linkIdx_t, hop_t> link_hops;
 		/*
 		 * factor: for faster mult (lazy update).
 		 *
@@ -64,6 +66,10 @@ private:
 
 		// Gets #hops on the link from (x, y) to direction dir.
 		hop_t& get(mlen_t x, mlen_t y, mlen_t dir);
+
+		// Conversion between (x, y, dir) and link_idx
+		static linkIdx_t get_idx(mlen_t x, mlen_t y, mlen_t dir);
+		static void get_dir(linkIdx_t link_idx, mlen_t& x, mlen_t& y, mlen_t& dir);
 
 		// Clear all #hops.
 		void clear();
@@ -90,6 +96,16 @@ private:
 	 * Returned value corresponds to bat2 batches.
 	 */
 	static vol_t calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t bat1, len_t bat2);
+
+	// Functions for unicast/multicast calc
+	// Notice: for multiple dests, *dst* needs to be in increasing order.
+	void unicast(pos_t src, pos_t dst, vol_t size);
+	hop_t unicastCalc(pos_t src, pos_t dst, vol_t size);
+	void multicast(pos_t src, const pos_t* dst, cidx_t len, vol_t size);
+	hop_t multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t size);
+	void unicast_from_dram(pos_t dst, vol_t size);
+	void unicast_to_dram(pos_t src, vol_t size);
+	void multicast_from_dram(const pos_t* dst, cidx_t len, vol_t size);
 
 public:
 	NoC(bool _calc_bw = true);
@@ -135,16 +151,6 @@ public:
 	access_t get_tot_DRAM_acc() const;
 	// Maximal #hops of one link. Used for bandwidth calculation.
 	hop_t get_max_link() const;
-
-	// Functions for unicast/multicast calc
-	// Notice: for multiple dests, *dst* needs to be in increasing order.
-	void unicast(pos_t src, pos_t dst, vol_t size);
-	hop_t unicastCalc(pos_t src, pos_t dst, vol_t size);
-	void multicast(pos_t src, const pos_t* dst, cidx_t len, vol_t size);
-	hop_t multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t size);
-	void unicast_dram(pos_t dst, vol_t size);
-	void unicast_to_dram(pos_t dst, vol_t size);
-	void multicast_dram(const pos_t* dst, cidx_t len, vol_t size);
 
 	// Prints noc information
 	friend std::ostream& operator<<(std::ostream& os, const NoC& noc);

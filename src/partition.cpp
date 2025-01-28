@@ -104,7 +104,7 @@ bool PartIter::calcUtil(const PartSch& nextSch) const{
 	return util >= min_util;
 }
 
-bool PartIter::calc_util_best(const PartSch& nextSch){
+bool PartIter::calcUtil_best(const PartSch& nextSch){
 	if(nextSch.B * nextSch.H * nextSch.W < min_ncut) return false;
 	double util = calc_util(maxK, nextSch.K)\
 				* calc_util(maxB, nextSch.B)\
@@ -147,7 +147,7 @@ bool PartIter::getBestPart(cost_t cost){
 	min_util = 0;
 	while (nextPos!= endPos) {
 		auto& nextSch = *(nextPos++);
-		if(calc_util_best(nextSch)){
+		if(calcUtil_best(nextSch)){
 			curSch = nextSch;
 			p = true;
 		}
@@ -157,10 +157,10 @@ bool PartIter::getBestPart(cost_t cost){
 	return p;
 }
 
-PartSch::PartSch(len_t _K, len_t _B, len_t _H, len_t _W)
+PartSch::PartSch(partlen_t _K, partlen_t _B, partlen_t _H, partlen_t _W)
 	:K(_K), B(_B), H(_H), W(_W){}
 
-len_t& PartSch::operator[](std::uint8_t i){
+PartSch::partlen_t& PartSch::operator[](std::uint8_t i){
 	/*
 	switch (i) {
 	case 0: return K;
@@ -177,7 +177,7 @@ len_t& PartSch::operator[](std::uint8_t i){
 }
 
 
-const len_t& PartSch::operator[](std::uint8_t i) const{
+const PartSch::partlen_t& PartSch::operator[](std::uint8_t i) const{
 	/*
 	switch (i) {
 	case 0: return K;

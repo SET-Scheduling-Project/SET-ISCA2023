@@ -1,5 +1,5 @@
 /* This file contains
- *	Cluster: a class that records chips in a cluster.
+ *	Cluster: a class that records cores in a cluster.
  */
 
 #ifndef CLUSTER_H
@@ -13,7 +13,7 @@
 
 class Cluster{
 public:
-	// Traditional XY index of a chip. (e.g. y * xlen + x)
+	// Traditional XY index of a core. (e.g. y * xlen + x)
 	typedef cidx_t xyid_t;
 
 	// xlen/ylen: The x and y length of the cluster
@@ -23,7 +23,7 @@ public:
 	static double min_util;
 
 private:
-	// Range of the cluster, a cluster has chips with cidx:
+	// Range of the cluster, a cluster has cores with cidx:
 	// first, first+1, ..., last-1
 	struct{
 		cidx_t first, last;
@@ -41,7 +41,7 @@ public:
 	bool operator!=(const Cluster& other) const;
 
 	cidx_t num_cores() const;
-	pos_t operator[](cidx_t num_chip) const;
+	pos_t operator[](cidx_t num_core) const;
 
 	/* Allocation algorithm (see the definition of try_alloc for more details)
 	 * SET applies a strided allocation algorithm.
@@ -63,12 +63,12 @@ public:
 	allocRes_t try_alloc(utime_t* ops, cidx_t childNum, utime_t totOps=0) const;
 	Cluster sub_cluster(cidx_t childIdx, const allocRes_t& allocRes) const;
 
-	// Returns the sub_cluster formed by chip [from, from+num)
+	// Returns the sub_cluster formed by core [from, from+num)
 	Cluster sub_cluster(cidx_t from, cidx_t num) const;
 
 	// Global functions for "cidx_t -> pos_t" and "pos_t -> xyid_t" mappings.
 	static pos_t get_pos(cidx_t core_idx);
-	static xyid_t get_xyid(pos_t& chip);
+	static xyid_t get_xyid(pos_t& core);
 };
 
 #endif // CLUSTER_H

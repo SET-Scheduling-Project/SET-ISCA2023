@@ -42,10 +42,6 @@ public:
  *        which means in this way we can maintain compatibility.
  */
 class Node{
-public:
-	typedef std::vector<lid_t> layer_set;
-
-private:
 	// The underlying layer.
 	std::unique_ptr<const Layer> l;
 
@@ -86,10 +82,9 @@ public:
 
 class Network{
 public:
-	typedef Node::layer_set layer_set;
+	typedef std::vector<lid_t> layer_set;
 
 private:
-	std::vector<InputData> inputs;
 	std::vector<Node> layers;
 
 	// Used to check data range validity.

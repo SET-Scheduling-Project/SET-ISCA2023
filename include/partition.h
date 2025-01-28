@@ -18,14 +18,14 @@ class Node;
 
 struct PartSch{
 	typedef len_t partlen_t;
-	len_t K, B, H, W;
+	partlen_t K, B, H, W;
 
 	explicit PartSch()=default;
-	PartSch(len_t _K, len_t _B, len_t _H, len_t _W);
+	PartSch(partlen_t _K, partlen_t _B, partlen_t _H, partlen_t _W);
 
 	// (*this)[0/1/2/3] = K/B/H/W
-	len_t& operator[](std::uint8_t i);
-	const len_t& operator[](std::uint8_t i) const;
+	partlen_t& operator[](std::uint8_t i);
+	const partlen_t& operator[](std::uint8_t i) const;
 
 	// Total size of partition: K * B * H * W
 	vol_t size() const;
@@ -46,7 +46,7 @@ class PartEngine{
 		factor_t x,y;
 	};
 
-	static constexpr auto MAX_BUF = MAX_CHIPS;
+	static constexpr factor_t MAX_BUF = MAX_CHIPS;
 	// factors[i]: All partitions of i cores.
 	static fvec factors[MAX_BUF+1];
 
@@ -74,8 +74,7 @@ public:
 class PartIter{
 	friend PartEngine;
 
-	typedef PartEngine::fvec fvec;
-	typedef fvec::const_iterator citer;
+	typedef PartEngine::fvec::const_iterator citer;
 
 	PartSch& curSch;
 	citer nextPos, endPos;
@@ -95,7 +94,7 @@ class PartIter{
 	bool getBestPart(cost_t cost = cost_inf);
 
 	// Similar to calcUtil, but also updates maximal util.
-	bool calc_util_best(const PartSch& cur_sch);
+	bool calcUtil_best(const PartSch& cur_sch);
 
 public:
 	// Next function for iterator, returns whether iterator is valid.

@@ -43,17 +43,17 @@ public:
 class StdLayerEngine : public LayerEngine{
 	CoreMapper* mapper;
 
-public:
-	StdLayerEngine(CoreMapper* _mapper);
-
-	virtual vol_t get_ubuf_size() const override;
-	virtual LayerScheme search(LNode* curNode) const override;
-
 	// Sets placement *place* when partition *place.part* is fixed
 	void initLayouts(PlaceSch& place, const Node& layerT, const fmap_shape& ofmShape, len_t B) const;
 
 	// Calculates NoC *noc* from current placement *place*
 	void calcNoC(NoC& noc, const PlaceSch& place, LNode* curNode) const;
+
+public:
+	StdLayerEngine(CoreMapper* _mapper);
+
+	virtual vol_t get_ubuf_size() const override;
+	virtual LayerScheme search(LNode* curNode) const override;
 };
 
 #endif // LAYERENGINE_H

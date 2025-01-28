@@ -277,7 +277,7 @@ public:
 class SCut : public Cut{
 private:
 	const std::vector<lid_t> stage; // Pipeline stage of each child
-	const lid_t num_stage;          // Number of pipeline stages
+	const lid_t num_stage;          // Number of pipeline stages (minus 1)
 
 	virtual void construct(LTreeNode* node) override;
 

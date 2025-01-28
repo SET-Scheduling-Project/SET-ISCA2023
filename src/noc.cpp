@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <stdexcept>
 
 #include "cluster.h"
 #include "datalayout.h"
@@ -97,9 +98,9 @@ void NoC::fromRemoteMem(const DataLayout& toLayout){
 		vol_t curSize = it.range.size();
 		if(curSize <= 0) continue;
 		if(it.numTile == 1){
-			unicast_dram(it.tiles[0], curSize);
+			unicast_from_dram(it.tiles[0], curSize);
 		}else{
-			multicast_dram(it.tiles, it.numTile, curSize);
+			multicast_from_dram(it.tiles, it.numTile, curSize);
 		}
 	}
 }
@@ -116,9 +117,9 @@ void NoC::fromRemoteMem(const DataLayout& toLayout, len_t fromC, len_t toC){
 		vol_t curSize = range.size();
 		if(curSize <= 0) continue;
 		if(it.numTile == 1){
-			unicast_dram(it.tiles[0], curSize);
+			unicast_from_dram(it.tiles[0], curSize);
 		}else{
-			multicast_dram(it.tiles, it.numTile, curSize);
+			multicast_from_dram(it.tiles, it.numTile, curSize);
 		}
 	}
 }
@@ -137,8 +138,8 @@ void NoC::betweenLayout(const UniqueLayout& fromLayout, const DataLayout& toLayo
 
 	const auto* fLayout = dynamic_cast<const StdULayout*>(&fromLayout);
 	if(fLayout == nullptr){
-		assert(false);
-		return;
+		// Currently only StdULayout implemented get_intersect()
+		throw std::invalid_argument("betweenLayout() only implemented for StdULayout");
 	}
 
 	bool diffB = (fromB != toB);
@@ -151,7 +152,7 @@ void NoC::betweenLayout(const UniqueLayout& fromLayout, const DataLayout& toLayo
 		if(toRange.c.to <= fromCOffset) continue;
 		toRange.c -= fromCOffset;
 
-		for(auto it = fLayout->get_intersect(toRange, diffB);it.isValid();it.next()){
+		for(auto it = fLayout->get_intersect(toRange, diffB); it.isValid(); it.next()){
 			auto fromEntry = *it;
 			vol_t v = calc_intersect(fromEntry.range, toRange, fromB, toB);
 			if(v == 0) continue;
@@ -177,12 +178,9 @@ std::vector<NoC::link_info> NoC::get_link_info() const{
 
 	info.reserve(link_hops.link_hops.size());
 	for(const auto& it: link_hops.link_hops){
-		size_t idx = it.first;
-		size_t dir = idx % 4;
-		idx /= 4;
-		mlen_t y = idx % Cluster::ylen;
-		idx /= Cluster::ylen;
-		mlen_t x = idx;
+		mlen_t x, y, dir;
+		HopCount::get_dir(it.first, x, y, dir);
+
 		pos_t to;
 		switch(dir){
 		case 0:
@@ -200,6 +198,7 @@ std::vector<NoC::link_info> NoC::get_link_info() const{
 		default:
 			assert(false);
 		}
+
 		info.push_back({{x, y}, to, it.second * link_hops.factor});
 	}
 
@@ -268,7 +267,7 @@ NoC::hop_t NoC::multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t siz
 	return h * size;
 }
 
-void NoC::unicast_dram(pos_t dst, vol_t size){
+void NoC::unicast_from_dram(pos_t dst, vol_t size){
 	size_t llen = dram_list.size();
 	size_t i = 0;
 	vol_t from_size = 0;
@@ -280,19 +279,19 @@ void NoC::unicast_dram(pos_t dst, vol_t size){
 	tot_DRAM_acc += size;
 }
 
-void NoC::unicast_to_dram(pos_t dst, vol_t size){
+void NoC::unicast_to_dram(pos_t src, vol_t size){
 	size_t llen = dram_list.size();
 	size_t i = 0;
 	vol_t from_size = 0;
 	for(const pos_t& dram: dram_list){
 		vol_t to_size = (size * ++i) / llen;
-		unicast(dst, dram, to_size - from_size);
+		unicast(src, dram, to_size - from_size);
 		from_size = to_size;
 	}
 	tot_DRAM_acc += size;
 }
 
-void NoC::multicast_dram(const pos_t* dst, cidx_t len, vol_t size){
+void NoC::multicast_from_dram(const pos_t* dst, cidx_t len, vol_t size){
 	size_t llen = dram_list.size();
 	size_t i = 0;
 	vol_t from_size = 0;
@@ -402,9 +401,36 @@ NoC::hop_t NoC::HopCount::max() const{
 
 NoC::hop_t& NoC::HopCount::get(mlen_t x, mlen_t y, mlen_t dir){
 	assert(factor == 1);
-	size_t idx = (x * Cluster::ylen + y) * 4 + dir;
-	assert(idx < 4u*Cluster::xlen*Cluster::ylen);
+	linkIdx_t idx = get_idx(x, y, dir);
 	return link_hops[idx];
+}
+
+NoC::HopCount::linkIdx_t NoC::HopCount::get_idx(mlen_t x, mlen_t y, mlen_t dir){
+	static_assert(sizeof(linkIdx_t) > 2 * sizeof(mlen_t), "linkIdx_t needs to store x, y and dir");
+
+	linkIdx_t idx = (static_cast<linkIdx_t>(x) * Cluster::ylen + y) * 4 + dir;
+	assert(idx < static_cast<linkIdx_t>(4)*Cluster::xlen*Cluster::ylen);
+	return idx;
+}
+
+void NoC::HopCount::get_dir(linkIdx_t link_idx, mlen_t& x, mlen_t& y, mlen_t& dir){
+	// Notice: need to deal with negative x and y.
+
+	dir = link_idx % 4;
+	link_idx /= 4;
+	if(dir < 0){
+		link_idx -= 1;
+		dir += 4;
+	}
+
+	y = link_idx % Cluster::ylen;
+	link_idx /= Cluster::ylen;
+	if(y < 0){
+		link_idx -= 1;
+		y += Cluster::ylen;
+	}
+
+	x = link_idx;
 }
 
 void NoC::HopCount::clear(){

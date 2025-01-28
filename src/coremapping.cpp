@@ -11,6 +11,7 @@
 #define HTOTL(num_ol) HLEN((num_ol)*pnum_h-1)
 #define WTOTL(num_ol) WLEN((num_ol)*pnum_w-1)
 
+// Must use this define... Typedef does not work here (since Instance is private)
 #define PolarInst PolarMapper::Instance
 #define EyerissInst EyerissMapper::Instance
 
@@ -34,6 +35,10 @@ CoreMapper::CoreMapper(const Core& c):base_core(c){}
 
 const Core& CoreMapper::core() const{
 	return base_core;
+}
+
+vol_t CoreMapper::get_ubuf_size() const{
+	return base_core.ubuf().Size;
 }
 
 void CoreMapper::set_utime(Layer& l) const{
@@ -94,9 +99,6 @@ CoreMapper::CoreMapping PolarMapper::genMapping(const ConvWl& wl){
 	return instance.genMapping(wl);
 }
 
-vol_t PolarMapper::get_ubuf_size() const{
-	return core.ul3.Size;
-}
 
 // Codes for EyerissMapper
 
@@ -108,9 +110,6 @@ CoreMapper::CoreMapping EyerissMapper::genMapping(const ConvWl& wl){
 	return instance.genMapping(wl);
 }
 
-vol_t EyerissMapper::get_ubuf_size() const{
-	return core.ul2.Size;
-}
 
 // Codes for main search:
 

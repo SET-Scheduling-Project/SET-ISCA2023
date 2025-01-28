@@ -63,6 +63,11 @@ void PlaceSch::initPlacement(const Cluster& cluster){
 			}
 		}
 	}
+
+	assert(IS_INSTANCE(ifmLayout.get(), StdDataLayout));
+	assert(IS_INSTANCE(wgtLayout.get(), StdDataLayout));
+	static_cast<StdDataLayout*>(ifmLayout.get())->setCPosArr();
+	static_cast<StdDataLayout*>(wgtLayout.get())->setCPosArr();
 }
 
 void PlaceSch::update(PlaceSch&& sch){

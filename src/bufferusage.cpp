@@ -50,13 +50,13 @@ void BufferUsage::max_with(const BufferUsage& other){
 		return;
 	}
 	for(const auto& x : other.usage){
-		vol_t& chip_usage = usage[x.first];
-		chip_usage = MAX(chip_usage, x.second);
+		vol_t& core_usage = usage[x.first];
+		core_usage = MAX(core_usage, x.second);
 	}
 }
 
-bool BufferUsage::add(pos_t chip, vol_t size){
-	valid = valid && ((usage[chip] += size) <= capacity);
+bool BufferUsage::add(pos_t core, vol_t size){
+	valid = valid && ((usage[core] += size) <= capacity);
 	return valid;
 }
 

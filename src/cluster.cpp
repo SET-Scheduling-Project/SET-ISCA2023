@@ -31,10 +31,10 @@ cidx_t Cluster::num_cores() const{
 	return range.last - range.first;
 }
 
-pos_t Cluster::operator[](cidx_t num_chip) const{
-	if(num_chip >= num_cores()){
-		std::string msg = "Cluster::operator[] : num_chip >= num_cores() (";
-		msg += std::to_string(num_chip);
+pos_t Cluster::operator[](cidx_t num_core) const{
+	if(num_core >= num_cores()){
+		std::string msg = "Cluster::operator[] : num_core >= num_cores() (";
+		msg += std::to_string(num_core);
 		msg += " >= ";
 		msg += std::to_string(num_cores());
 		msg += ")";
@@ -42,10 +42,10 @@ pos_t Cluster::operator[](cidx_t num_chip) const{
 	}
 	/*
 	if(!use_range){
-		return core_list[static_cast<size_t>(num_chip)];
+		return core_list[static_cast<size_t>(num_core)];
 	}
 	*/
-	return get_pos(range.first + num_chip);
+	return get_pos(range.first + num_core);
 }
 
 /* The allocation algorithm in SET.
@@ -172,6 +172,6 @@ pos_t Cluster::get_pos(cidx_t core_idx){
 	return {x, y};
 }
 
-Cluster::xyid_t Cluster::get_xyid(pos_t& chip){
-	return chip.y * (xlen+2) + chip.x + 1;
+Cluster::xyid_t Cluster::get_xyid(pos_t& core){
+	return core.y * (xlen+2) + core.x + 1;
 }

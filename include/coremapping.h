@@ -1,7 +1,7 @@
 /* This file contains
  *	CoreMapper:    base class for core mappings (loop-tiling, cost eval, BSD, ...)
- *  EyerissMapper: the core with Eyeriss architecture.
- *  PolarMapper:   the core in our test chip.
+ *  EyerissMapper: mapper for the core with Eyeriss architecture.
+ *  PolarMapper:   mapper for the core in our test chip.
  *
  *  One can add their own core mappings as classes here (e.g. for their own cores).
  */
@@ -61,13 +61,13 @@ public:
 	CoreMapping genLayerMap(const Layer& layer, const PartSch& part, len_t batch_size, bool wgtB);
 
 	const Core& core() const;
+	vol_t get_ubuf_size() const;
 	void set_utime(Layer& l) const;
 
 	virtual void set_conv_utime(ConvLayer& l) const;
 	virtual void set_lr_utime(LRLayer& l) const;
 
 	virtual CoreMapping genMapping(const ConvWl& wl) = 0;
-	virtual vol_t get_ubuf_size() const = 0;
 
 	virtual ~CoreMapper() = default;
 };
@@ -143,7 +143,6 @@ public:
 	virtual void set_conv_utime(ConvLayer& l) const override;
 
 	virtual CoreMapping genMapping(const ConvWl& wl) override;
-	virtual vol_t get_ubuf_size() const override;
 };
 
 class EyerissMapper : public CoreMapper{
@@ -187,7 +186,6 @@ public:
 	EyerissMapper(const EyerissCore& _core);
 
 	virtual CoreMapping genMapping(const ConvWl& wl) override;
-	virtual vol_t get_ubuf_size() const override;
 };
 
 #endif // COREMAPPING_H

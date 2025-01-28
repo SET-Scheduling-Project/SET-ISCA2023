@@ -58,6 +58,7 @@ public:
 	 * the array "tiles" of length "numTile".
 	 *
 	 * Note: divN is not used (always equal to 1), thus commented out.
+	 * Note: tiles needs to be in increasing order for NoC to compute correctly.
 	 */
 	struct Entry{
 		const fmap_range& range;

@@ -48,7 +48,7 @@ private:
 
 	// Only for SCut.
 	std::vector<lid_t> stage;
-	// Maximal stage index
+	// Number of pipeline stages (minus 1)
 	lid_t num_stage;
 
 	// Only for LNode.
@@ -56,18 +56,22 @@ private:
 	// Direct prevs.
 	Bitset dirp_set;
 
+	// Adds a child to the tail of children.
+	void add(LTreeNode* child);
+
 	// Checks whether "from -> to" is shortcut.
 	// Also sets "to_dram" of "from" accordingly.
 	static bool is_shortcut(lid_t from_id, const LTreeNode& to);
 
-	// traverse/traverse_lset: Used in init_root()
-	// Since "layer_set" is set after traverse_lset(), we need two passes to init.
+	// traverse_pass1/traverse_pass2: Used in init_root()
+	// Since "layer_set" is set after traverse_pass1(), we need two passes to init.
 
-	// traverse: sets "num_bgrp", "unit_time", "height", "to_dram" and "dirp_set".
-	void traverse();
-	// traverse_lset: sets "t", "stage", "num_stage", "modified" and "layer_set".
+	// traverse_pass1: sets "t", "stage", "num_stage", "modified" and "layer_set".
 	//     *calc_type*: if set, auto deduce type "t".
-	void traverse_lset(bool calc_type = false);
+	void traverse_pass1(bool calc_type = false);
+
+	// traverse_pass2: sets "num_bgrp", "unit_time", "height", "to_dram" and "dirp_set".
+	void traverse_pass2();
 
 public:
 	LTreeNode(const Bitset& _layer_set, len_t _num_batch, LTreeNode* _parent=nullptr, NodeType _t=NodeType::L);
@@ -77,9 +81,6 @@ public:
 
 	// Initialize the whole tree from the root.
 	void init_root();
-
-	// Adds a child to the tail of children.
-	void add(LTreeNode* child);
 
 	// Used in incremental search.
 	bool isModified() const;
@@ -101,7 +102,6 @@ public:
 	len_t get_bgrp_num() const;
 	len_t get_bgrp_size() const;
 	len_t get_tot_batch() const;
-	//lid_t get_nstages() const;
 	const std::vector<lid_t>& get_stages() const;
 	lid_t get_num_stage() const;
 	bool get_to_dram() const;
