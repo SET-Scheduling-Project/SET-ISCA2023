@@ -164,8 +164,6 @@ void NoC::betweenLayout(const UniqueLayout& fromLayout, const DataLayout& toLayo
 		}
 	}
 
-	if(fromB > toB)  h /= (fromB / toB);
-
 	tot_hops += h;
 }
 
@@ -334,7 +332,11 @@ vol_t NoC::calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t 
 	}
 	ints.b.from=0;
 	ints.b.to=tot_b;
-	return ints.size();
+	vol_t v = ints.size();
+
+	// If bat1 > bat2, reduce to bat2 batches.
+	if(bat1 > bat2)  v /= (bat1 / bat2);
+	return v;
 }
 
 

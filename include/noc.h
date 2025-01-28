@@ -87,7 +87,7 @@ private:
 	/*
 	 * Calculate the volume of intersection between "rng1" and "rng2"
 	 * The batch dimension of "rng1/2" is in [0, bat1/2)
-	 * Batch is duplicated to max(bat1, bat2) to compute intersection.
+	 * Returned value corresponds to bat2 batches.
 	 */
 	static vol_t calc_intersect(const fmap_range& rng1, const fmap_range& rng2, len_t bat1, len_t bat2);
 
