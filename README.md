@@ -6,81 +6,109 @@ We will continue updating the framework codes and annotations in the future.
 
 The "Scheduling Space Size Calculation" and "Optimal HW-tile Allocation Algorithm" mentioned in the paper can be found in ***[this repo](https://github.com/SET-ISCA2023/Tile-Alloc-Algorithm)***. The same repo is cited in the paper.
 
-
 ## How to run
 
-1. Run *make* to build the executable "./build/stschedule"
+### QuickStart example
 
-2. Run "./build/stschedule [IR_file] < input_file"
+```
+# Make the executable
+make
 
-- Where IR_file is the file name of the output IR json.
+# Run with bash inputs
+bash ./bash_example.sh
 
-- input_file is a plain text file with the following format, an example can be seen at *example.txt*:
+# Run with file inputs
+bash ./file_example.sh
 
-  - "dataflow net batch x y stride round cost bw"
+# Then txt files `bash_exp_*.txt` and `file_exp_*.txt` will be produced.
+```
 
-    - dataflow: Dataflow of the PE array, 0 for Simba, 1 for Eyeriss.
+### Detailed steps
 
-    - net: Workload (NN network), we support 13 networks listed below:
+1. Run `make` to build the executable `./build/stschedule`
 
-      0: darknet19
-      
-      1: vgg19
+2. Run the executable with either *file input* or *bash input*.
 
-      2: resnet50
+- *File Input*: `./build/stschedule config_file`
 
-      3: googlenet
+  - config_file is a text file with the value of all configuration parameters. The parameters to be set is the same as the *Bash Input* below.
+  - See `file_in.txt` for an example of config_file.
 
-      4: resnet101
+- *Bash Input*: `./build/stschedule --args exp net batch core x y stride bw cost round gen_IR`
 
-      5: densenet
+  - `exp`: Name of the current experiment, used in the name of the output files. (When set to `None`, experiment name will be empty)
 
-      6: inception_resnet_v1
+  - `net`: Name of the workload (NN network), we currently support 16 networks:
 
-      7: gnmt
-
-      8: lstm
-
-      9: zfnet
-
-      10: transformer
-
-      11: transformer (one cell)
-
-      12: pnasnet
-
-      13: BERT-Large (one cell)
-
-      14: GPT2-XL prefill stage (one cell)
-
-      15: GPT2-XL decode stage (one cell)
+    - `resnet`: ResNet-50
+    - `resnet101`: ResNet-101
+    - `ires`: Inception-ResNet-v1
+    - `goog`: GoogLeNet
+    - `densenet`: DenseNet
+    - `darknet`: DarkNet-19
+    - `vgg`: VGG-19
+    - `zfnet`: ZFNet
+    - `gnmt`: GNMT
+    - `lstm`: LSTM
+    - `trans`: Transformer
+    - `trans_cell`: Transformer (one cell)
+    - `pnas`: PNASNet
+    - `bert`: BERT-Large (one cell)
+    - `gpt_prefill`: GPT2-XL prefill stage (one cell)
+    - `gpt_decode`: GPT2-XL decode stage (one cell)
 
     - Note: For the LLM models, we provide their one-cell version due to the excessive length and identical cell structure of the network. To run the full network, see the comments in "nns/llm.cpp".
 
-	- batch: Workload batch size.
+  - `batch`: Workload batch size.
 
-    - x, y: Length of the x/y axis in the mesh.
+  - `core`: Core arch and dataflow. Currently supports `eyeriss` and `polar`.
 
-    - stride: The stride used in initial placement, must be a divisor of x.
+  - `x`, `y`: Length of the x/y axis in the mesh.
 
-    - round: Parameter controlling #rounds in SA, #rounds = round * "#layers in net"
+  - `stride`: The stride used in initial placement, must be a divisor of x.
 
-    - cost: Cost function, we use $e$ and $d$ to represent total energy and delay.
+  - `bw`: Bandwidth of each NoC link.
 
-	  - When cost = 0, cost function is $d$.
-	  - When cost = -1, cost function is $e$.
-	  - When cost > 0, cost function is $e^{cost}*d$.
-	  - Otherwise, cost function is $e*d^{-cost}$.
-	  - (Setting cost_f = 1 will set EDP as the cost function)
+  - `cost`: Cost function, we use $e$ and $d$ to represent total energy and delay.
+    - When cost = 0, cost function is $d$.
+    - When cost = -1, cost function is $e$.
+    - When cost > 0, cost function is $e^{cost}*d$.
+    - Otherwise, cost function is $e*d^{-cost}$.
+    - (Setting cost_f = 1 will set EDP as the cost function)
 
-	- bw: Bandwidth of each NoC link.
+  - `round`: Parameter controlling #rounds in SA, #rounds = round * "#layers in net"
 
-  - Since these parameters are read by cin, you can also run the framework using:
-    - "echo *dataflow net batch x y stride round cost_f bw* | ./build/stschedule [IR_file]"
+  - `gen_IR`: (0 or 1) Whether generates the IR file or not.
 
-- The current running method is not elegant, and we will improve it soon.
+### Output Files
+
+By default, SET will output the following files:
+
+- `{exp}_{type}_tree.txt`: The pure tree structure of the scheme.
+
+- `{exp}_{type}_summary.txt`: The cost summary of the scheme.
+
+- `{exp}_{type}_scheme.txt`: All information about the scheme, including cost/noc/dram/buffer/... of each node.
+
+- (If `gen_IR` = 1) `{exp}_{type}_IR.json`: The generated IR file.
+
+Here `exp` is the name of the current experiment. `type` is the search type.
+
+There are four default search types:
+
+- `init`: The initial RA Tree, used as input of SA. No SA search is performed. (Currently IR is not generated for the initial RA Tree)
+
+- `LP`: Layer-pipeline (LP), only LP-pattern RA Trees are searched in SA.
+
+- `LS`: Layer-sequential (LS), only LS-pattern RA Trees are searched in SA.
+
+- `SET`: SA has no constraints, all valid RA Trees can be reached.
 
 ## Update History
+
+2025/01/30 Improved input format.
+
+2025/01/28 Added comments, tidied-up codes.
 
 2025/01/08 Added LLM models (BERT-Large, GPT2-XL prefill/decode).
 
@@ -88,11 +116,7 @@ The "Scheduling Space Size Calculation" and "Optimal HW-tile Allocation Algorith
 
 ## Current Plans
 
-Since current APIs of the main program mostly relies on cin, it is mostly inconvenient and difficult to start with.
-
-Thus we are planning to add better input formats, i.e. config files, and command line arguments.
-
-Also, we are planning to add comments or docs for better understanding of the modules(classes) in the codes.
+Since ***[GEMINI](https://github.com/SET-Scheduling-Project/GEMINI-HPCA2024)*** is developed on top of SET, and their codes share the same format, we are working on merging SET and GEMINI together.
 
 # Citations ###
 ```
