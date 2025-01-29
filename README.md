@@ -6,6 +6,20 @@ We will continue updating the framework codes and annotations in the future.
 
 The "Scheduling Space Size Calculation" and "Optimal HW-tile Allocation Algorithm" mentioned in the paper can be found in ***[this repo](https://github.com/SET-ISCA2023/Tile-Alloc-Algorithm)***. The same repo is cited in the paper.
 
+## Code Documentation
+
+For code related documentations, one can refer to [`code_doc.md`](code_doc.md), which contains:
+
+- The overall structure of SET codes.
+
+- The complete cost model of SET codes.
+
+- How to add customized components to SET codes. (e.g. new type of layer, new core architecture, new scheduling algorithm, etc.)
+
+Also, we have added comments for most functions and variables, which can also help understanding the codes.
+
+If you have found any bugs or possible improvements of the codes, or have any SET-related questions, feel free to post issues in this repo, or contact us directly by email (see section **Contacting Us**).
+
 ## How to run
 
 ### QuickStart example
@@ -106,7 +120,7 @@ There are four default search types:
 
 ## Update History
 
-2025/01/30 Improved input format.
+2025/01/30 Improved input format. Added code documentation.
 
 2025/01/28 Added comments, tidied-up codes.
 
