@@ -64,19 +64,22 @@ void NoC::clear(){
 }
 
 cycle_t NoC::get_time() const{
-	cycle_t dram_time = DIVCEIL(tot_DRAM_acc, (4*DRAM_bw));
+	cycle_t dram_time = DIVCEIL(tot_DRAM_acc, DRAM_bw);
 	if(!calc_bw) return dram_time;
 	cycle_t noc_time = DIVCEIL(link_hops.max(), NoC_bw);
 	return MAX(dram_time, noc_time);
 }
 
 energy_t NoC::get_cost() const{
-	//std::cout << "GC " << tot_hops << ' ' << tot_DRAM_acc << std::endl;
-	return tot_hops*hop_cost + tot_DRAM_acc*DRAM_acc_cost;
+	return get_hop_cost() + get_DRAM_cost();
 }
 
 energy_t NoC::get_hop_cost() const{
-	return tot_hops*hop_cost;
+	return tot_hops * hop_cost;
+}
+
+energy_t NoC::get_DRAM_cost() const{
+	return tot_DRAM_acc * DRAM_acc_cost;
 }
 
 NoC::hop_t NoC::get_tot_hops() const{

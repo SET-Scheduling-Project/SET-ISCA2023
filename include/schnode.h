@@ -135,9 +135,13 @@ public:
 	energy_t get_mac_energy() const;
 
 	// Print functions.
-	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const =0;
+	// Prints detailed scheme with all information.
+	virtual void print_scheme(std::string pad = "", std::ostream& os = std::cout) const =0;
+	// Prints only the structure of the RA Tree.
 	virtual void print_tree(std::string pad = "", std::ostream& os = std::cout) const =0;
-	void print_res(std::ostream& os = std::cout) const;
+	// Prints only a energy & performance summary.
+	void print_summary(std::ostream& os = std::cout) const;
+
 	friend std::ostream& operator<<(std::ostream& os, const SchNode& sch);
 	friend std::ostream& operator<<(std::ostream& os, const SchNode* sch);
 
@@ -202,7 +206,7 @@ public:
 	const Bitset& get_dirp_set() const;
 	bool get_to_dram() const;
 
-	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const override;
+	virtual void print_scheme(std::string pad = "", std::ostream& os = std::cout) const override;
 	virtual void print_tree(std::string pad = "", std::ostream& os = std::cout) const override;
 
 #ifndef NOT_GEN_IR
@@ -248,7 +252,7 @@ public:
 	const sn_vec& getChildren() const;
 	len_t get_num_bgrp() const;
 
-	virtual void print_struct(std::string pad = "", std::ostream& os = std::cout) const override;
+	virtual void print_scheme(std::string pad = "", std::ostream& os = std::cout) const override;
 	virtual void print_tree(std::string pad = "", std::ostream& os = std::cout) const override;
 
 #ifndef NOT_GEN_IR

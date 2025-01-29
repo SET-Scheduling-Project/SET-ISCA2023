@@ -100,25 +100,41 @@ energy_t SchNode::get_mac_energy() const{
 	return mac_energy;
 }
 
-void SchNode::print_res(std::ostream& os) const{
-	os << cost << ", Ubuf/Buf/Bus/Mac/NoC/DRAM:" << ubuf_energy << '/' << buf_energy << '/' << bus_energy << '/' << mac_energy;
-	os << '/' << noc.get_hop_cost() << '/' << noc.get_cost() - noc.get_hop_cost();
+void SchNode::print_summary(std::ostream& os) const{
+	os << "[Cost Summary]" << std::endl;
+	os << "Energy: " << cost.energy << std::endl;
+	os << "Latency: " << cost.time << std::endl;
+	os << "Cost Function: " << cost.cost() << std::endl;
+	os << std::endl;
+	os << "[Detailed Cost]" << std::endl;
+	os << "ubuf_energy: " << ubuf_energy << std::endl;
+	os << "buf_energy: " << buf_energy << std::endl;
+	os << "bus_energy: " << bus_energy << std::endl;
+	os << "mac_energy: " << mac_energy << std::endl;
+	os << "noc_energy: " << noc.get_hop_cost() << std::endl;
+	os << "DRAM_energy: " << noc.get_DRAM_cost() << std::endl;
+	os << "NoC & DRAM latency bound: " << noc.get_time() << std::endl;
+
 	energy_t e = cost.energy;
 	e -= ubuf_energy + buf_energy + bus_energy + mac_energy + noc.get_cost();
 	if(e == 0 && cost.energy == 0) return;
 	if(cost.energy != 0) e /= cost.energy;
-	if(e>1e-8 || e<-1e-8){
+	if(e > 1e-8 || e < -1e-8){
 		os << std::endl << "[Error]: cost mismatch! error: " << e;
 	}
 }
 
 std::ostream& operator<<(std::ostream& os, const SchNode& sch){
-	sch.print_res(os);
+	os << "Energy: " << sch.cost.energy << ',';
+	os << " Latency: " << sch.cost.time << ',';
+	os << " Cost Function: " << sch.cost.cost();
 	return os;
 }
 
 std::ostream& operator<<(std::ostream& os, const SchNode* sch){
-	sch->print_res(os);
+	os << "Energy: " << sch->cost.energy << ',';
+	os << "Latency: " << sch->cost.time << ',';
+	os << "Cost Function: " << sch->cost.cost();
 	return os;
 }
 
@@ -235,7 +251,7 @@ bool LNode::get_to_dram() const{
 	return to_dram;
 }
 
-void LNode::print_struct(std::string pad, std::ostream& os) const{
+void LNode::print_scheme(std::string pad, std::ostream& os) const{
 	os << pad << layert.name() << ' ' << num_batch << ' ' << place_sch;
 	os << " util:" << tileSch.util*100 << '/' << tileSch.tot_util*100;
 	os << ' ' << cost << " Ubuf/Buf/Bus/Mac:" << ubuf_energy << '/' << buf_energy << '/' << bus_energy << '/' << mac_energy;
@@ -358,7 +374,7 @@ len_t Cut::get_num_bgrp() const{
 	return num_bgrp;
 }
 
-void Cut::print_struct(std::string pad, std::ostream& os) const{
+void Cut::print_scheme(std::string pad, std::ostream& os) const{
 	os << pad << ((type == NodeType::S)?'S':'T');
 	os << ' ' << num_batch << '/' << num_bgrp;
 	os << ' ' << cost << " Ubuf/Buf/Bus/Mac:" << ubuf_energy << '/' << buf_energy << '/' << bus_energy << '/' << mac_energy;
@@ -367,7 +383,7 @@ void Cut::print_struct(std::string pad, std::ostream& os) const{
 	os << std::endl;
 	pad += '\t';
 	for(auto child: children){
-		child->print_struct(pad, os);
+		child->print_scheme(pad, os);
 	}
 }
 
@@ -388,6 +404,15 @@ void Cut::print_tree(std::string pad, std::ostream& os) const{
 void TCut::construct(LTreeNode* node){
 	bool is_top = (parent == nullptr);
 	bool is_seg = (!is_top) && parent->is_DRAM_cut();
+
+	/*
+	 * [weight shift]
+	 * When there are only one subbatch, each child is computed only once.
+	 * If this TCut is a whole segment, then the weights of its children
+	 * does not need to be pinned on-chip throughout the computation of
+	 * this TCut. Instead, the weights can be prefetched with the same
+	 * pattern of ifmap: prefetch next weights when this child is computing.
+	 */
 	bool wgt_shift = is_seg && (num_bgrp == 1);
 
 	// Recursively construct (and search) each child.
@@ -403,18 +428,19 @@ void TCut::construct(LTreeNode* node){
 		}
 
 		if(!is_top){
-			/*if(!p->get_ifm_usage()){
-				valid = false;
-				return;
-			}*/
+			// Update ifmap usage.
 			if(!(is_seg || (ifm_usage += p->get_ifm_usage()))){
 				valid = false;
 				return;
 			}
+
+			// Update buffer usage.
 			if(last_p == nullptr){
-				//buf_usage = p->get_buf_usage();
+				// No need to compute here, later computations are always larger.
+				// buf_usage = p->get_buf_usage();
 			}else{
 				if(wgt_shift){
+					// With weight shift, weight is handled just like ifmap.
 					buf_usage.max_with(p->get_ifm_usage() + last_p->get_buf_usage() + last_p->get_wgt_usage() + p->get_wgt_usage());
 				}else{
 					buf_usage.max_with(p->get_ifm_usage() + last_p->get_buf_usage());
@@ -423,13 +449,16 @@ void TCut::construct(LTreeNode* node){
 					valid = false;
 					return;
 				}
-				//buf_usage.max(p->get_buf_usage());
 			}
+
+			// Update weight usage.
 			if(!wgt_shift && !(wgt_usage += p->get_wgt_usage())){
 				valid = false;
 				return;
 			}
 		}
+
+		// Update cost and noc.
 		cost.time += p->get_cost().time;
 		cost.energy += p->get_cost().energy;
 		noc += p->get_noc();
@@ -437,6 +466,7 @@ void TCut::construct(LTreeNode* node){
 		buf_energy += p->get_buf_energy();
 		bus_energy += p->get_bus_energy();
 		mac_energy += p->get_mac_energy();
+
 		last_p = p;
 	}
 
@@ -444,6 +474,7 @@ void TCut::construct(LTreeNode* node){
 	if(!is_top){
 		if(num_bgrp == 1){
 			if(wgt_shift){
+				// With weight shift, weight is handled just like ifmap.
 				buf_usage.max_with(last_p->get_buf_usage() + last_p->get_wgt_usage());
 			}else{
 				buf_usage.max_with(last_p->get_buf_usage());
@@ -454,15 +485,18 @@ void TCut::construct(LTreeNode* node){
 				return;
 			}
 			if(wgt_shift){
+				// With weight shift, weight is handled just like ifmap.
 				buf_usage.max_with(children.front()->get_ifm_usage() + children.front()->get_wgt_usage() + last_p->get_buf_usage() + last_p->get_wgt_usage());
 			}else{
 				buf_usage.max_with(children.front()->get_ifm_usage() + last_p->get_buf_usage());
 			}
 		}
+
 		if(!buf_usage){
 			valid = false;
 			return;
 		}
+
 		if(!wgt_shift && !(buf_usage + wgt_usage)){
 			valid = false;
 			return;
@@ -533,6 +567,8 @@ void SCut::construct(LTreeNode* node){
 			valid = false;
 			return;
 		}
+
+		// Update buffer usage.
 		if(num_bgrp > 1 && !(buf_usage += p->get_ifm_usage())){
 			valid = false;
 			return;
@@ -541,16 +577,22 @@ void SCut::construct(LTreeNode* node){
 			valid = false;
 			return;
 		}
+
+		// Update weight usage
 		if(!(wgt_usage += p->get_wgt_usage())){
 			valid = false;
 			return;
 
 		}
+
+		// Update ifmap usage
 		if(!(is_seg || (ifm_usage += p->get_ifm_usage()))){
 			valid = false;
 			return;
 		}
-		//cost.time += p->get_cost().time;
+
+		// time needs to be updated at last (when max is computed)
+		// cost.time += p->get_cost().time;
 		cost.energy += p->get_cost().energy;
 		max_time = MAX(p->get_cost().time, max_time);
 		noc += p->get_noc();

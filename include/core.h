@@ -40,6 +40,7 @@ public:
 
 	// Global buffer (largest buffer of each core) information.
 	virtual const Buffer& ubuf() const = 0;
+	virtual ~Core() = default;
 };
 
 class PolarCore : public Core{

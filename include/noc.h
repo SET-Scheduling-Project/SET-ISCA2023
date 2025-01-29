@@ -147,6 +147,7 @@ public:
 	cycle_t get_time() const;
 	energy_t get_cost() const;
 	energy_t get_hop_cost() const;
+	energy_t get_DRAM_cost() const;
 	hop_t get_tot_hops() const;
 	access_t get_tot_DRAM_acc() const;
 	// Maximal #hops of one link. Used for bandwidth calculation.
