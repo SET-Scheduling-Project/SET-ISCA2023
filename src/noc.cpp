@@ -236,12 +236,30 @@ void NoC::multicast(pos_t src, const pos_t* dst, cidx_t len, vol_t size){
 	tot_hops += multicastCalc(src, dst, len, size);
 }
 
+/*
+ * Here is the logic of multicast calculation:
+ *   For multicast, we will firstly travel along the x direction, then the y direction.
+ *     For example, if src is (1, 4) and dst is (2, 6),
+ *     then the path is (1, 4) -> (2, 4) -> (3, 4) -> (3, 5) -> (3, 6).
+ * 
+ *   The first part of the code calculates x-direction hops, which is
+ *     `(min{dst.x}, src.y) <-- (src.x, src.y) --> (max{dst.x}, src.y)`
+ *
+ *   The second part of the code calculates y-direction hops, which is
+ *     `(a, min{dst_a.x}) <-- (a, src.y) --> (a, max{dst_a.x})`
+ *     where `dst_a` is all dests with x coordinate equals to `a`.
+ *
+ *     We need to iterate through all possible value of `a`.
+ */
 NoC::hop_t NoC::multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t size){
 	link_hops.flat_factor();
 
 	mlen_t cur_x = dst[0].x;
 	mlen_t min_y = dst[0].y;
 	hop_t h = 0;
+
+	// First part, calculate x-direction hops
+
 	if(calc_bw){
 		for(mlen_t x = src.x; x > dst[0].x; --x){
 			link_hops.get(x, src.y, 2) += size;
@@ -252,8 +270,18 @@ NoC::hop_t NoC::multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t siz
 	}
 	h += MAX(src.x, dst[len-1].x) - MIN(src.x, dst[0].x);
 
+	/* Second part, calculate y-direction hops
+	 * cur_x records the current x coordinate
+	 * min_y records the minimal y cooordinate of all dests with `x = cur_x`
+	 * 
+	 * Notice that we must calculate at the end (when i=len)
+	 */
 	for(cidx_t i=1; i<=len; ++i){
+		// If still at the same x coordinate, pass
 		if(i<len && dst[i].x == cur_x) continue;
+
+		// x coordinate changes, calculate hops of all previous dests with `x = cur_x`
+
 		if(calc_bw){
 			for(mlen_t y = src.y; y > min_y; --y){
 				link_hops.get(cur_x, y, 1) += size;
@@ -264,6 +292,9 @@ NoC::hop_t NoC::multicastCalc(pos_t src, const pos_t* dst, cidx_t len, vol_t siz
 		}
 		h += MAX(src.y, dst[i-1].y) - MIN(src.y, min_y);
 		if(i == len) break;
+
+		// Update cur_x and min_y to the new dest
+
 		cur_x = dst[i].x;
 		min_y = dst[i].y;
 	}
